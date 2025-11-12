@@ -23,8 +23,9 @@ git add .
 git commit -m "Your changes"
 git push origin main
 
-# Deploy to production
-./deploy.sh
+# Deploy to production (auto-deploy with release tag)
+git tag v1.0.1
+git push origin v1.0.1  # Auto-deploys to DigitalOcean!
 ```
 
 ## One-Line Commands
@@ -36,11 +37,11 @@ git push origin main
 # Upload database to production
 ./scripts/db-upload.sh
 
-# Deploy code to production
-./deploy.sh
+# Deploy code to production (automatic)
+git tag v1.0.1 && git push origin v1.0.1
 
-# Full sync (database + code)
-./scripts/db-upload.sh && git push origin main && ./deploy.sh
+# Full sync (database + code + deploy)
+./scripts/db-upload.sh && git push origin main && git tag v1.0.1 && git push origin v1.0.1
 ```
 
 ## When to Sync Database

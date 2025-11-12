@@ -1,0 +1,44 @@
+name: Deploy to DigitalOcean
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on tags like v1.0.0, v1.0.1, v2.0.0, etc.
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to DigitalOcean
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USER }}
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            echo "🚀 Starting deployment..."
+
+            cd /var/www/twu
+
+            echo "📥 Pulling latest changes from GitHub..."
+            git fetch --all --tags
+            git checkout ${{ github.ref_name }}
+
+            echo "🔧 Installing backend dependencies..."
+            cd backend
+            npm install --production
+
+            echo "🔧 Installing frontend dependencies and building..."
+            cd ../frontend
+            npm install
+            npm run build
+
+            echo "🔄 Restarting backend with PM2..."
+            cd ../backend
+            pm2 restart twu
+
+            echo "💾 Saving PM2 configuration..."
+            pm2 save
+
+            echo "✅ Deployment complete for version ${{ github.ref_name }}!"

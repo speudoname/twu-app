@@ -94,7 +94,30 @@ This syncs your local changes to production.
 
 ## Deployment Commands
 
-### Quick Reference
+### Automatic Deployment with Release Tags
+
+🚀 **The project now has AUTOMATIC deployment via GitHub Actions!**
+
+When you're ready to deploy, create and push a release tag:
+
+```bash
+# Create and push a release tag
+git tag v1.0.1
+git push origin v1.0.1
+
+# GitHub Actions will automatically:
+# 1. Pull latest code on droplet
+# 2. Install dependencies
+# 3. Build frontend
+# 4. Restart backend
+# ✅ Deployment happens automatically!
+```
+
+**Note:** Regular `git push` does NOT deploy. Only pushing a tag (v*) triggers deployment.
+
+### Manual Deployment (Alternative)
+
+If you prefer manual deployment:
 
 ```bash
 # Download production database
@@ -139,10 +162,13 @@ This syncs your local changes to production.
 
 # 2. Fix bug locally and test
 
-# 3. Commit and deploy
+# 3. Commit, push, and deploy with release tag
 git add . && git commit -m "Fix: bug description"
 git push origin main
-./deploy.sh
+
+# 4. Deploy to production (when ready)
+git tag v1.0.1
+git push origin v1.0.1  # Auto-deploys!
 ```
 
 ### Scenario 2: Adding New Feature (Code + DB Changes)
@@ -154,11 +180,14 @@ git push origin main
 
 # 3. Test locally
 
-# 4. Upload DB and deploy
+# 4. Upload DB, commit, and deploy
 ./scripts/db-upload.sh
 git add . && git commit -m "Feature: description"
 git push origin main
-./deploy.sh
+
+# 5. Deploy to production (when ready)
+git tag v1.1.0
+git push origin v1.1.0  # Auto-deploys!
 ```
 
 ### Scenario 3: User Needs Password Reset (DB Only)
