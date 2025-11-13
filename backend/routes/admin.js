@@ -28,11 +28,14 @@ router.get('/settings', (req, res) => {
       });
     }
 
-    // Don't send the full token for security
+    // Don't send the full tokens for security
     const maskedSettings = {
       ...settings,
       postmark_server_token: settings.postmark_server_token
         ? `${settings.postmark_server_token.substring(0, 8)}...`
+        : '',
+      openai_api_key: settings.openai_api_key
+        ? `${settings.openai_api_key.substring(0, 8)}...`
         : ''
     };
 
@@ -56,7 +59,8 @@ router.put('/settings', [
   body('postmark_stream').optional().trim(),
   body('sender_email').optional().isEmail(),
   body('sender_name').optional().trim(),
-  body('reply_to_email').optional().isEmail()
+  body('reply_to_email').optional().isEmail(),
+  body('openai_api_key').optional().trim()
 ], (req, res) => {
   try {
     const errors = validationResult(req);
@@ -72,7 +76,8 @@ router.put('/settings', [
       postmark_stream,
       sender_email,
       sender_name,
-      reply_to_email
+      reply_to_email,
+      openai_api_key
     } = req.body;
 
     // Check if settings exist
@@ -106,6 +111,11 @@ router.put('/settings', [
       if (reply_to_email !== undefined) {
         updates.push('reply_to_email = ?');
         values.push(reply_to_email);
+      }
+
+      if (openai_api_key !== undefined && !openai_api_key.includes('...')) {
+        updates.push('openai_api_key = ?');
+        values.push(openai_api_key);
       }
 
       if (updates.length > 0) {

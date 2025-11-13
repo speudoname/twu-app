@@ -1,36 +1,63 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
-import Navbar from './components/Navbar';
+import MobileLayout from './components/MobileLayout';
+import { registerServiceWorker } from './utils/registerSW';
 
 // Pages
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import Inbox from './pages/Inbox';
 import Tasks from './pages/Tasks';
+import Profile from './pages/Profile';
 import AdminSettings from './pages/AdminSettings';
 
-function App() {
-  return (
-    <Router>
-      <AuthProvider>
-        <div className="app">
-          <Navbar />
-          <Routes>
-            {/* Public routes */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password/:token" element={<ResetPassword />} />
+// Wrapper component to conditionally show mobile layout
+function AppContent() {
+  const { user } = useAuth();
+  const location = useLocation();
 
+  // Check if current route is a public route (login, register, etc.)
+  const isPublicRoute = ['/login', '/register', '/forgot-password'].includes(location.pathname) ||
+                        location.pathname.startsWith('/reset-password');
+
+  // Register service worker on mount
+  useEffect(() => {
+    registerServiceWorker();
+  }, []);
+
+  return (
+    <div className="app">
+      {user && !isPublicRoute ? (
+        <MobileLayout>
+          <Routes>
             {/* Protected routes */}
+            <Route
+              path="/inbox"
+              element={
+                <ProtectedRoute>
+                  <Inbox />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/tasks"
               element={
                 <ProtectedRoute>
                   <Tasks />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Profile route */}
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <Profile />
                 </ProtectedRoute>
               }
             />
@@ -46,9 +73,68 @@ function App() {
             />
 
             {/* Default redirect */}
-            <Route path="/" element={<Navigate to="/tasks" replace />} />
+            <Route path="/" element={<Navigate to="/inbox" replace />} />
           </Routes>
-        </div>
+        </MobileLayout>
+      ) : (
+        <Routes>
+          {/* Public routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
+
+          {/* Protected routes */}
+          <Route
+            path="/inbox"
+            element={
+              <ProtectedRoute>
+                <Inbox />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tasks"
+            element={
+              <ProtectedRoute>
+                <Tasks />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Profile route */}
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Admin routes */}
+          <Route
+            path="/admin/settings"
+            element={
+              <ProtectedRoute adminOnly={true}>
+                <AdminSettings />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Default redirect */}
+          <Route path="/" element={<Navigate to="/inbox" replace />} />
+        </Routes>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        <AppContent />
       </AuthProvider>
     </Router>
   );

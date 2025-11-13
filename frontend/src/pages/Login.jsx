@@ -19,7 +19,7 @@ const Login = () => {
     const result = await login(email, password);
 
     if (result.success) {
-      navigate('/tasks');
+      navigate('/inbox');
     } else {
       setError(result.message);
     }

@@ -7,6 +7,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const taskRoutes = require('./routes/tasks');
 const adminRoutes = require('./routes/admin');
+const inboxRoutes = require('./routes/inbox');
 
 // Create Express app
 const app = express();
@@ -36,6 +37,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/inbox', inboxRoutes);
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
@@ -83,6 +85,7 @@ app.listen(PORT, () => {
 ║  - /api/auth/*                         ║
 ║  - /api/tasks/*                        ║
 ║  - /api/admin/*                        ║
+║  - /api/inbox/*                        ║
 ╚════════════════════════════════════════╝
   `);
 });

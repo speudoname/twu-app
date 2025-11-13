@@ -46,12 +46,12 @@ async function seedDatabase() {
 
     if (!emailSettingsExist) {
       const insertSettings = db.prepare(`
-        INSERT INTO email_settings (id, sender_email, sender_name, reply_to_email)
-        VALUES (1, 'noreply@twu.com', 'TWU', 'support@twu.com')
+        INSERT INTO email_settings (id, sender_email, sender_name, reply_to_email, openai_api_key)
+        VALUES (1, 'noreply@twu.com', 'TWU', 'support@twu.com', NULL)
       `);
 
       insertSettings.run();
-      console.log('Default email settings created (Postmark token needs to be configured)');
+      console.log('Default email settings created (OpenAI API key needs to be configured in admin panel or via environment variable)');
     }
 
     console.log('Database seeded successfully!');

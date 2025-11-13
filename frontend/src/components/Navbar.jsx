@@ -20,11 +20,18 @@ const Navbar = () => {
     <nav className="navbar">
       <div className="container">
         <div className="navbar-content">
-          <Link to="/tasks" className="navbar-brand">
+          <Link to="/inbox" className="navbar-brand">
             TWU
           </Link>
 
           <div className="navbar-nav">
+            <Link
+              to="/inbox"
+              className={location.pathname === '/inbox' ? 'active' : ''}
+            >
+              Inbox
+            </Link>
+
             <Link
               to="/tasks"
               className={location.pathname === '/tasks' ? 'active' : ''}

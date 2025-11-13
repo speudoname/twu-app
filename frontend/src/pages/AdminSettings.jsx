@@ -9,6 +9,7 @@ const AdminSettings = () => {
     sender_email: '',
     sender_name: '',
     reply_to_email: '',
+    openai_api_key: '',
   });
 
   const [stats, setStats] = useState(null);
@@ -199,6 +200,28 @@ const AdminSettings = () => {
               onChange={handleSettingsChange}
               placeholder="support@yourdomain.com"
             />
+          </div>
+
+          <h3 style={{ marginTop: 40, marginBottom: 20 }}>OpenAI Settings (Voice Transcription)</h3>
+
+          <div className="form-group">
+            <label htmlFor="openai_api_key">
+              OpenAI API Key
+            </label>
+            <input
+              type="password"
+              id="openai_api_key"
+              name="openai_api_key"
+              value={settings.openai_api_key}
+              onChange={handleSettingsChange}
+              placeholder="sk-proj-..."
+            />
+            <small style={{ color: '#666', fontSize: '13px' }}>
+              Used for voice transcription in Inbox feature. Get your API key from{' '}
+              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">
+                OpenAI Dashboard
+              </a>
+            </small>
           </div>
 
           <button
