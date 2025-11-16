@@ -1,5 +1,49 @@
 # TWU - Time Well Used
 
+## ⚠️ CRITICAL: Database Strategy
+
+**DATABASE IS A FILE - NOT A MIGRATION SYSTEM**
+
+```
+backend/data/twu.db
+```
+
+### The Rules (DO NOT BREAK THESE):
+1. **Local database is the source of truth**
+2. **Changes are made LOCALLY to the twu.db file**
+3. **Database is UPLOADED to production** (entire file)
+4. **NO migrations in production** - we replace the whole file
+5. **Always upload database BEFORE deploying code changes**
+
+### When Adding New Columns/Tables:
+```bash
+# 1. Modify LOCAL database directly
+cd backend && node -e "
+const db = require('./database/db');
+db.prepare('ALTER TABLE tasks ADD COLUMN your_column TYPE').run();
+"
+
+# 2. Upload to production
+./scripts/db-upload.sh
+
+# 3. Then deploy code
+/deploy v1.0.3 "Feature description"
+```
+
+### DO NOT:
+- ❌ Run migrations on production
+- ❌ Think about migrations like Rails/Django
+- ❌ Create migration files and expect them to run
+- ❌ Deploy code before uploading database
+
+### DO:
+- ✅ Make schema changes locally to twu.db
+- ✅ Upload the entire database file
+- ✅ Test locally with the real database file
+- ✅ Upload database FIRST, then deploy code
+
+---
+
 ## Quick Start
 
 ### Deploy to Production

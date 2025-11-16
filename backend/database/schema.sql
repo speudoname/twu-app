@@ -61,6 +61,10 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   revoked INTEGER DEFAULT 0,
+  revoked_at DATETIME,
+  token_hash TEXT,
+  user_agent TEXT,
+  ip_address TEXT,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
