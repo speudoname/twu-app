@@ -49,6 +49,9 @@ const tagsRoutes = require('./routes/tags');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy - required for rate limiting behind reverse proxy
+app.set('trust proxy', true);
+
 // ============================================================================
 // SECURITY MIDDLEWARE (CRITICAL #11)
 // ============================================================================
