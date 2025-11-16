@@ -117,6 +117,7 @@ const apiLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false, xForwardedForHeader: false }
 });
 
 // Strict rate limiter for authentication endpoints
@@ -128,6 +129,7 @@ const authLimiter = rateLimit({
     message: 'Too many authentication attempts, please try again later.'
   },
   skipSuccessfulRequests: true, // Don't count successful requests
+  validate: { trustProxy: false, xForwardedForHeader: false }
 });
 
 // Refresh token rate limiter (more permissive than auth, but still limited)
@@ -140,6 +142,7 @@ const refreshTokenLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false, xForwardedForHeader: false }
 });
 
 // Email sending rate limiter (very strict to prevent spam)
@@ -152,6 +155,7 @@ const emailLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { trustProxy: false, xForwardedForHeader: false }
 });
 
 // Apply general rate limiter to all API routes
