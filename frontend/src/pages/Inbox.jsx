@@ -31,7 +31,7 @@ export default function Inbox() {
     try {
       setLoading(true);
       const response = await inboxAPI.getAll(statusFilter);
-      setItems(response.data);
+      setItems(response.data.items || []);
     } catch (err) {
       console.error('Load inbox error:', err);
       setError('Failed to load inbox items');
