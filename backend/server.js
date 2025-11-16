@@ -50,7 +50,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Trust proxy - required for rate limiting behind reverse proxy
-app.set('trust proxy', true);
+// Set to 1 to trust only the first proxy hop (more secure than 'true')
+app.set('trust proxy', 1);
 
 // ============================================================================
 // SECURITY MIDDLEWARE (CRITICAL #11)
