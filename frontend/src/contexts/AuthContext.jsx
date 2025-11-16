@@ -40,8 +40,10 @@ export const AuthProvider = ({ children }) => {
       const response = await authAPI.login({ email, password });
 
       if (response.data.success) {
-        const { token, user } = response.data;
-        localStorage.setItem('token', token);
+        const { accessToken, refreshToken, user } = response.data;
+        // Store access token as 'token' for backward compatibility with interceptors
+        localStorage.setItem('token', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
         localStorage.setItem('user', JSON.stringify(user));
         setUser(user);
         return { success: true };

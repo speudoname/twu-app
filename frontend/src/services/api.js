@@ -4,18 +4,22 @@ const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
-// Request interceptor to add token
+// Request interceptor to add token and set Content-Type
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Only set Content-Type to application/json if it's not FormData
+    // FormData needs to set its own Content-Type with boundary
+    if (!(config.data instanceof FormData)) {
+      config.headers['Content-Type'] = 'application/json';
+    }
+
     return config;
   },
   (error) => {
@@ -41,9 +45,25 @@ api.interceptors.response.use(
 export const authAPI = {
   register: (data) => api.post('/auth/register', data),
   login: (data) => api.post('/auth/login', data),
-  logout: () => {
+  logout: async () => {
+    // Get refresh token before clearing storage
+    const refreshToken = localStorage.getItem('refreshToken');
+
+    // Call backend logout endpoint to revoke refresh token
+    if (refreshToken) {
+      try {
+        await api.post('/auth/logout', { refreshToken });
+      } catch (error) {
+        console.error('Error revoking refresh token:', error);
+        // Continue with local logout even if backend call fails
+      }
+    }
+
+    // Clear local storage
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+
     return Promise.resolve();
   },
   forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
@@ -69,6 +89,35 @@ export const adminAPI = {
   testEmail: (email) => api.post('/admin/test-email', { email }),
   getStats: () => api.get('/admin/stats'),
   getUsers: () => api.get('/admin/users'),
+};
+
+// Inbox API
+export const inboxAPI = {
+  getAll: (status = 'active') => api.get(`/inbox?status=${status}`),
+  create: (data) => api.post('/inbox', data),
+  update: (id, data) => api.put(`/inbox/${id}`, data),
+  delete: (id) => api.delete(`/inbox/${id}`),
+  convertToTasks: (id, tasks) => api.post(`/inbox/${id}/convert-to-tasks`, { tasks }),
+  convertToMemo: (id, memo) => api.post(`/inbox/${id}/convert-to-memo`, memo),
+  delay: (id, delayUntil) => api.post(`/inbox/${id}/delay`, { delayUntil }),
+  transcribe: (formData) => api.post('/inbox/transcribe', formData),
+};
+
+// Memos API
+export const memosAPI = {
+  getAll: () => api.get('/memos'),
+  getOne: (id) => api.get(`/memos/${id}`),
+  create: (data) => api.post('/memos', data),
+  update: (id, data) => api.put(`/memos/${id}`, data),
+  delete: (id) => api.delete(`/memos/${id}`),
+};
+
+// Tags API
+export const tagsAPI = {
+  getAll: () => api.get('/tags'),
+  create: (data) => api.post('/tags', data),
+  update: (id, data) => api.put(`/tags/${id}`, data),
+  delete: (id) => api.delete(`/tags/${id}`),
 };
 
 export default api;

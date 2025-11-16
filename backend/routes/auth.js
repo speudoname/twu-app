@@ -3,8 +3,22 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 const db = require('../database/db');
 const emailService = require('../services/email');
+const tokenService = require('../services/tokenServiceDB'); // Using database-backed token service
+
+// Refresh token rate limiter
+const refreshTokenLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Allow 20 token refreshes per 15 minutes per IP
+  message: {
+    success: false,
+    message: 'Too many token refresh attempts, please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Validation rules
 const registerValidation = [
@@ -119,20 +133,22 @@ router.post('/login', loginValidation, async (req, res) => {
       });
     }
 
-    // Generate JWT token
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        isAdmin: user.is_admin
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+    // Generate access and refresh tokens with user tracking
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const { accessToken, refreshToken, expiresIn } = await tokenService.generateTokenPair(
+      user.id,
+      user.email,
+      user.is_admin,
+      userAgent,
+      ipAddress
     );
 
     res.json({
       success: true,
-      token,
+      accessToken,
+      refreshToken,
+      expiresIn,
       user: {
         id: user.id,
         email: user.email,
@@ -151,16 +167,64 @@ router.post('/login', loginValidation, async (req, res) => {
   }
 });
 
-// Logout endpoint (optional - mainly for frontend to know to clear token)
-router.post('/logout', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Logged out successfully'
-  });
+// Refresh token endpoint
+router.post('/refresh', refreshTokenLimiter, async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Refresh token is required'
+      });
+    }
+
+    // Refresh access token (verifies refresh token and generates new access token)
+    const result = await tokenService.refreshAccessToken(refreshToken);
+
+    res.json({
+      success: true,
+      accessToken: result.accessToken,
+      expiresIn: result.expiresIn
+    });
+
+  } catch (error) {
+    console.error('Token refresh error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to refresh token'
+    });
+  }
+});
+
+// Logout endpoint - revokes refresh token
+router.post('/logout', async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (refreshToken) {
+      tokenService.revokeRefreshToken(refreshToken);
+    }
+
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Logout failed'
+    });
+  }
 });
 
 // Forgot password endpoint
 router.post('/forgot-password', [body('email').isEmail().normalizeEmail()], async (req, res) => {
+  const startTime = Date.now();
+  const MIN_RESPONSE_TIME = 500; // Minimum 500ms to prevent timing attacks
+
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -175,22 +239,24 @@ router.post('/forgot-password', [body('email').isEmail().normalizeEmail()], asyn
     // Find user
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
 
-    if (!user) {
-      // Don't reveal if email exists or not
-      return res.json({
-        success: true,
-        message: 'If the email exists, a password reset link has been sent'
-      });
+    // Always perform the same operations to prevent timing attacks
+    if (user) {
+      // Create reset token and send email
+      try {
+        const token = await emailService.createResetToken(user.id);
+        await emailService.sendPasswordResetEmail(user, token);
+      } catch (emailError) {
+        console.error('Error sending reset email:', emailError);
+      }
     }
 
-    // Create reset token and send email
-    try {
-      const token = await emailService.createResetToken(user.id);
-      await emailService.sendPasswordResetEmail(user, token);
-    } catch (emailError) {
-      console.error('Error sending reset email:', emailError);
-    }
+    // Ensure consistent response time to prevent timing attacks
+    const elapsedTime = Date.now() - startTime;
+    const remainingTime = Math.max(0, MIN_RESPONSE_TIME - elapsedTime);
 
+    await new Promise(resolve => setTimeout(resolve, remainingTime));
+
+    // Always return the same response regardless of whether user exists
     res.json({
       success: true,
       message: 'If the email exists, a password reset link has been sent'
@@ -198,6 +264,12 @@ router.post('/forgot-password', [body('email').isEmail().normalizeEmail()], asyn
 
   } catch (error) {
     console.error('Forgot password error:', error);
+
+    // Ensure consistent response time even on error
+    const elapsedTime = Date.now() - startTime;
+    const remainingTime = Math.max(0, MIN_RESPONSE_TIME - elapsedTime);
+    await new Promise(resolve => setTimeout(resolve, remainingTime));
+
     res.status(500).json({
       success: false,
       message: 'Failed to process request'

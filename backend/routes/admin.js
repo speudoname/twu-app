@@ -1,10 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 const db = require('../database/db');
 const authMiddleware = require('../middleware/auth');
 const adminAuthMiddleware = require('../middleware/adminAuth');
 const emailService = require('../services/email');
+const { buildEmailSettingsUpdateQuery } = require('../utils/dynamicUpdate');
+const auditLog = require('../services/auditLog');
+
+// Email sending rate limiter (very strict to prevent spam)
+const emailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // Limit each IP to 3 email sends per hour
+  message: {
+    success: false,
+    message: 'Too many email requests. Please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // All admin routes require both auth and admin privileges
 router.use(authMiddleware);
@@ -19,7 +34,8 @@ router.get('/settings', (req, res) => {
       return res.json({
         success: true,
         settings: {
-          postmark_server_token: '',
+          has_postmark_token: false,
+          has_openai_key: false,
           postmark_stream: 'outbound',
           sender_email: '',
           sender_name: '',
@@ -28,20 +44,22 @@ router.get('/settings', (req, res) => {
       });
     }
 
-    // Don't send the full tokens for security
-    const maskedSettings = {
-      ...settings,
-      postmark_server_token: settings.postmark_server_token
-        ? `${settings.postmark_server_token.substring(0, 8)}...`
-        : '',
-      openai_api_key: settings.openai_api_key
-        ? `${settings.openai_api_key.substring(0, 8)}...`
-        : ''
+    // NEVER send any portion of API keys - only boolean flags
+    const safeSettings = {
+      has_postmark_token: !!settings.postmark_server_token,
+      has_openai_key: !!settings.openai_api_key,
+      postmark_stream: settings.postmark_stream || 'outbound',
+      sender_email: settings.sender_email || '',
+      sender_name: settings.sender_name || '',
+      reply_to_email: settings.reply_to_email || ''
     };
+
+    // Log admin action
+    auditLog.log(req, auditLog.ACTIONS.VIEW, 'email_settings', 1);
 
     res.json({
       success: true,
-      settings: maskedSettings
+      settings: safeSettings
     });
 
   } catch (error) {
@@ -84,50 +102,72 @@ router.put('/settings', [
     const existingSettings = db.prepare('SELECT id FROM email_settings WHERE id = 1').get();
 
     if (existingSettings) {
-      // Build update query dynamically
-      const updates = [];
-      const values = [];
+      // Validate and prepare data for update
+      const validatedData = {};
 
-      if (postmark_server_token !== undefined && !postmark_server_token.includes('...')) {
-        updates.push('postmark_server_token = ?');
-        values.push(postmark_server_token);
+      // Validate postmark_server_token: real token, not empty, not masked, min 10 chars
+      if (postmark_server_token !== undefined) {
+        if (typeof postmark_server_token === 'string' &&
+            postmark_server_token.trim() !== '' &&
+            !postmark_server_token.includes('...') &&
+            postmark_server_token.length >= 10) {
+          validatedData.postmark_server_token = postmark_server_token.trim();
+        }
       }
 
+      // Validate postmark_stream: must be in allowed list
       if (postmark_stream !== undefined) {
-        updates.push('postmark_stream = ?');
-        values.push(postmark_stream);
+        const allowedStreams = ['outbound', 'broadcast', 'transactional'];
+        if (typeof postmark_stream === 'string' &&
+            allowedStreams.includes(postmark_stream.toLowerCase())) {
+          validatedData.postmark_stream = postmark_stream.toLowerCase();
+        }
       }
 
+      // Validate sender_email: email format, max 320 chars
       if (sender_email !== undefined) {
-        updates.push('sender_email = ?');
-        values.push(sender_email);
+        const emailRegex = /^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (typeof sender_email === 'string' &&
+            sender_email.length <= 320 &&
+            emailRegex.test(sender_email)) {
+          validatedData.sender_email = sender_email.toLowerCase().trim();
+        }
       }
 
+      // Validate sender_name: non-empty, max 100 chars
       if (sender_name !== undefined) {
-        updates.push('sender_name = ?');
-        values.push(sender_name);
+        if (typeof sender_name === 'string' &&
+            sender_name.length > 0 &&
+            sender_name.length <= 100) {
+          validatedData.sender_name = sender_name.trim();
+        }
       }
 
+      // Validate reply_to_email: email format, max 320 chars
       if (reply_to_email !== undefined) {
-        updates.push('reply_to_email = ?');
-        values.push(reply_to_email);
+        const emailRegex = /^[a-zA-Z0-9._%-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (typeof reply_to_email === 'string' &&
+            reply_to_email.length <= 320 &&
+            emailRegex.test(reply_to_email)) {
+          validatedData.reply_to_email = reply_to_email.toLowerCase().trim();
+        }
       }
 
-      if (openai_api_key !== undefined && !openai_api_key.includes('...')) {
-        updates.push('openai_api_key = ?');
-        values.push(openai_api_key);
+      // Validate openai_api_key: real key, not empty, not masked, min 10 chars
+      if (openai_api_key !== undefined) {
+        if (typeof openai_api_key === 'string' &&
+            openai_api_key.trim() !== '' &&
+            !openai_api_key.includes('...') &&
+            openai_api_key.length >= 10) {
+          validatedData.openai_api_key = openai_api_key.trim();
+        }
       }
 
-      if (updates.length > 0) {
-        updates.push('updated_at = CURRENT_TIMESTAMP');
+      // Build and execute update query using utility
+      const { query, values, hasUpdates } = buildEmailSettingsUpdateQuery(validatedData);
 
-        const updateQuery = `
-          UPDATE email_settings
-          SET ${updates.join(', ')}
-          WHERE id = 1
-        `;
-
-        db.prepare(updateQuery).run(...values);
+      if (hasUpdates) {
+        db.prepare(query).run(...values);
       }
     } else {
       // Insert new settings
@@ -150,6 +190,11 @@ router.put('/settings', [
     // Refresh email service settings
     emailService.refreshSettings();
 
+    // Log admin action
+    auditLog.log(req, auditLog.ACTIONS.UPDATE_SETTINGS, 'email_settings', 1, {
+      updatedFields: Object.keys(req.body).filter(k => req.body[k] !== undefined)
+    });
+
     res.json({
       success: true,
       message: 'Settings updated successfully'
@@ -165,7 +210,7 @@ router.put('/settings', [
 });
 
 // Test email configuration
-router.post('/test-email', [
+router.post('/test-email', emailLimiter, [
   body('email').isEmail().withMessage('Valid email required')
 ], async (req, res) => {
   try {
@@ -217,6 +262,11 @@ TWU Team
       textBody
     );
 
+    // Log admin action
+    auditLog.log(req, auditLog.ACTIONS.SEND_TEST_EMAIL, 'email', null, {
+      recipient: email
+    });
+
     res.json({
       success: true,
       message: 'Test email sent successfully',
@@ -241,14 +291,19 @@ router.get('/stats', (req, res) => {
     const completedTaskCount = db.prepare('SELECT COUNT(*) as count FROM tasks WHERE completed = 1').get();
     const verifiedUserCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE email_verified = 1').get();
 
+    const stats = {
+      totalUsers: userCount.count,
+      verifiedUsers: verifiedUserCount.count,
+      totalTasks: taskCount.count,
+      completedTasks: completedTaskCount.count
+    };
+
+    // Log admin action
+    auditLog.log(req, auditLog.ACTIONS.VIEW_STATS, 'stats', null, stats);
+
     res.json({
       success: true,
-      stats: {
-        totalUsers: userCount.count,
-        verifiedUsers: verifiedUserCount.count,
-        totalTasks: taskCount.count,
-        completedTasks: completedTaskCount.count
-      }
+      stats
     });
 
   } catch (error) {
@@ -269,6 +324,11 @@ router.get('/users', (req, res) => {
       FROM users
       ORDER BY created_at DESC
     `).all();
+
+    // Log admin action
+    auditLog.log(req, auditLog.ACTIONS.VIEW_USERS, 'users', null, {
+      userCount: users.length
+    });
 
     res.json({
       success: true,

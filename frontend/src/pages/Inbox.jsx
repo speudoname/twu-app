@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import api from '../services/api';
-import { Mic, Square, Loader2, Trash2, ArrowRight, Plus } from 'lucide-react';
+import { inboxAPI } from '../services/api';
+import { Mic, Square, Loader2, Trash2, Plus, Clock, ListTodo, BookOpen, Eye, EyeOff } from 'lucide-react';
+import TaskConversionModal from '../components/TaskConversionModal';
+import MemoConversionModal from '../components/MemoConversionModal';
+import { useSwipeGesture } from '../hooks/useSwipeGesture';
 
 export default function Inbox() {
   const [items, setItems] = useState([]);
@@ -9,6 +12,9 @@ export default function Inbox() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('active'); // 'active', 'delayed', 'all'
+  const [taskConversionModal, setTaskConversionModal] = useState({ isOpen: false, item: null });
+  const [memoConversionModal, setMemoConversionModal] = useState({ isOpen: false, item: null });
 
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -19,12 +25,12 @@ export default function Inbox() {
     if (inputRef.current) {
       inputRef.current.focus();
     }
-  }, []);
+  }, [statusFilter]);
 
   const loadInboxItems = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/inbox');
+      const response = await inboxAPI.getAll(statusFilter);
       setItems(response.data);
     } catch (err) {
       console.error('Load inbox error:', err);
@@ -40,7 +46,7 @@ export default function Inbox() {
 
     try {
       setLoading(true);
-      const response = await api.post('/inbox', {
+      const response = await inboxAPI.create({
         content: newContent,
         source: 'manual',
       });
@@ -62,7 +68,7 @@ export default function Inbox() {
 
   const handleDelete = async (id) => {
     try {
-      await api.delete(`/inbox/${id}`);
+      await inboxAPI.delete(id);
       setItems(items.filter((item) => item.id !== id));
     } catch (err) {
       console.error('Delete inbox item error:', err);
@@ -70,17 +76,70 @@ export default function Inbox() {
     }
   };
 
-  const handleConvertToTask = async (id) => {
+  const handleQuickConvertToTask = async (id, content) => {
     try {
-      await api.post(`/inbox/${id}/convert-to-task`, {
-        deleteAfterConvert: true,
-      });
+      // Quick convert: create one task with the inbox content as title
+      await inboxAPI.convertToTasks(id, [{
+        title: content,
+        importance: 5,
+        urgency: 5
+      }]);
 
       setItems(items.filter((item) => item.id !== id));
       setError('');
     } catch (err) {
       console.error('Convert to task error:', err);
       setError('Failed to convert to task');
+    }
+  };
+
+  const handleOpenTaskModal = (item) => {
+    setTaskConversionModal({ isOpen: true, item });
+  };
+
+  const handleOpenMemoModal = (item) => {
+    setMemoConversionModal({ isOpen: true, item });
+  };
+
+  const handleTaskConversion = async (tasks) => {
+    try {
+      await inboxAPI.convertToTasks(taskConversionModal.item.id, tasks);
+      setItems(items.filter((item) => item.id !== taskConversionModal.item.id));
+      setTaskConversionModal({ isOpen: false, item: null });
+    } catch (error) {
+      console.error('Task conversion failed:', error);
+      throw error;
+    }
+  };
+
+  const handleMemoConversion = async (memo) => {
+    try {
+      await inboxAPI.convertToMemo(memoConversionModal.item.id, memo);
+      setItems(items.filter((item) => item.id !== memoConversionModal.item.id));
+      setMemoConversionModal({ isOpen: false, item: null });
+    } catch (error) {
+      console.error('Memo conversion failed:', error);
+      throw error;
+    }
+  };
+
+  const handleDelayUntilTomorrow = async (id) => {
+    try {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0); // 9 AM tomorrow
+
+      await inboxAPI.delay(id, tomorrow.toISOString());
+
+      if (statusFilter === 'active') {
+        setItems(items.filter((item) => item.id !== id));
+      } else {
+        loadInboxItems(); // Reload to update the item
+      }
+      setError('');
+    } catch (err) {
+      console.error('Delay item error:', err);
+      setError('Failed to delay item');
     }
   };
 
@@ -132,11 +191,7 @@ export default function Inbox() {
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
 
-      const response = await api.post('/inbox/transcribe', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      const response = await inboxAPI.transcribe(formData);
 
       setItems([response.data.item, ...items]);
       setError('');
@@ -149,6 +204,173 @@ export default function Inbox() {
     } finally {
       setIsTranscribing(false);
     }
+  };
+
+  // Swipeable Inbox Item Component
+  const SwipeableInboxItem = ({ item }) => {
+    const { swipeX, isSwiping, handlers } = useSwipeGesture({
+      onSwipeLeft: () => handleDelete(item.id),
+      onSwipeRight: () => handleOpenTaskModal(item),
+      threshold: 100
+    });
+
+    const formatTime = (dateString) => {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffInMinutes = Math.floor((now - date) / 60000);
+
+      if (diffInMinutes < 1) return 'Just now';
+      if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+      if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
+      return `${Math.floor(diffInMinutes / 1440)}d ago`;
+    };
+
+    const getSourceColor = (source) => {
+      const colors = {
+        email: '#667eea',
+        transcription: '#34c759',
+        manual: '#8e8e93'
+      };
+      return colors[source] || '#8e8e93';
+    };
+
+    return (
+      <div style={{
+        position: 'relative',
+        marginBottom: '12px',
+        overflow: 'hidden',
+        borderRadius: '20px'
+      }}>
+        {/* Action Buttons Behind */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '0 20px'
+        }}>
+          {/* Left: Convert to Task (shown on swipe right) */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: 'white',
+            fontWeight: '600',
+            fontSize: '15px',
+            opacity: swipeX > 20 ? 1 : 0,
+            transition: 'opacity 0.2s',
+            background: 'linear-gradient(135deg, #34c759 0%, #30d158 100%)',
+            padding: '10px 16px',
+            borderRadius: '12px',
+            boxShadow: '0 4px 12px rgba(52, 199, 89, 0.3)'
+          }}>
+            <ListTodo size={18} />
+            Task
+          </div>
+
+          {/* Right: Delete (shown on swipe left) */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: 'white',
+            fontWeight: '600',
+            fontSize: '15px',
+            opacity: swipeX < -20 ? 1 : 0,
+            transition: 'opacity 0.2s',
+            background: 'linear-gradient(135deg, #ff3b30 0%, #ff6b6b 100%)',
+            padding: '10px 16px',
+            borderRadius: '12px',
+            boxShadow: '0 4px 12px rgba(255, 59, 48, 0.3)'
+          }}>
+            <Trash2 size={18} />
+            Delete
+          </div>
+        </div>
+
+        {/* Card Content */}
+        <div
+          {...handlers}
+          style={{
+            position: 'relative',
+            background: 'rgba(255, 255, 255, 0.7)',
+            backdropFilter: 'blur(40px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+            borderRadius: '20px',
+            padding: '18px 20px',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.06)',
+            border: '0.5px solid rgba(255, 255, 255, 0.8)',
+            cursor: 'grab',
+            transform: `translateX(${swipeX}px)`,
+            transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            touchAction: 'pan-y'
+          }}
+        >
+          {/* Content */}
+          <p style={{
+            margin: '0 0 12px 0',
+            fontSize: '15px',
+            lineHeight: '1.5',
+            color: '#1a1a1a',
+            fontWeight: '400'
+          }}>
+            {item.content}
+          </p>
+
+          {/* Metadata */}
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            alignItems: 'center',
+            flexWrap: 'wrap'
+          }}>
+            {/* Source Badge */}
+            <span style={{
+              fontSize: '12px',
+              fontWeight: '600',
+              color: getSourceColor(item.source),
+              background: `${getSourceColor(item.source)}15`,
+              padding: '4px 10px',
+              borderRadius: '8px',
+              textTransform: 'capitalize'
+            }}>
+              {item.source}
+            </span>
+
+            {/* Delayed Badge */}
+            {item.status === 'delayed' && item.delayed_until && (
+              <span style={{
+                fontSize: '12px',
+                fontWeight: '600',
+                color: '#ff9500',
+                background: '#ff950015',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                <Clock size={12} />
+                Until {new Date(item.delayed_until).toLocaleDateString()}
+              </span>
+            )}
+
+            {/* Timestamp */}
+            <span style={{
+              fontSize: '12px',
+              color: '#8e8e93',
+              marginLeft: 'auto'
+            }}>
+              {formatTime(item.created_at)}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -176,6 +398,93 @@ export default function Inbox() {
             {error}
           </div>
         )}
+
+        {/* Status Filter Tabs */}
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          marginBottom: '16px',
+          background: 'rgba(255, 255, 255, 0.7)',
+          backdropFilter: 'blur(40px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+          borderRadius: '16px',
+          padding: '6px',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
+          border: '0.5px solid rgba(255, 255, 255, 0.8)',
+        }}>
+          <button
+            onClick={() => setStatusFilter('active')}
+            style={{
+              flex: 1,
+              padding: '10px',
+              fontSize: '14px',
+              fontWeight: '600',
+              background: statusFilter === 'active'
+                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                : 'transparent',
+              color: statusFilter === 'active' ? 'white' : '#8e8e93',
+              border: 'none',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+          >
+            <Eye size={16} />
+            Active
+          </button>
+          <button
+            onClick={() => setStatusFilter('delayed')}
+            style={{
+              flex: 1,
+              padding: '10px',
+              fontSize: '14px',
+              fontWeight: '600',
+              background: statusFilter === 'delayed'
+                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                : 'transparent',
+              color: statusFilter === 'delayed' ? 'white' : '#8e8e93',
+              border: 'none',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+          >
+            <Clock size={16} />
+            Delayed
+          </button>
+          <button
+            onClick={() => setStatusFilter('all')}
+            style={{
+              flex: 1,
+              padding: '10px',
+              fontSize: '14px',
+              fontWeight: '600',
+              background: statusFilter === 'all'
+                ? 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                : 'transparent',
+              color: statusFilter === 'all' ? 'white' : '#8e8e93',
+              border: 'none',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+          >
+            <EyeOff size={16} />
+            All
+          </button>
+        </div>
 
         {/* Input Card - Glass Morphism */}
         <div style={{
@@ -214,7 +523,6 @@ export default function Inbox() {
             />
 
             <div style={{ display: 'flex', gap: '10px' }}>
-              {/* Add Button */}
               <button
                 type="submit"
                 disabled={!newContent.trim() || loading || isTranscribing}
@@ -244,7 +552,6 @@ export default function Inbox() {
                 {loading ? 'Adding...' : 'Add'}
               </button>
 
-              {/* Voice Button */}
               <button
                 type="button"
                 onClick={isRecording ? stopRecording : startRecording}
@@ -318,115 +625,16 @@ export default function Inbox() {
               color: '#8e8e93'
             }}>
               <p style={{ fontSize: '17px', marginBottom: '8px', fontWeight: '600', color: '#1a1a1a' }}>
-                Your inbox is empty
+                {statusFilter === 'delayed' ? 'No delayed items' : 'Your inbox is empty'}
               </p>
               <p style={{ fontSize: '14px' }}>
-                Start capturing your thoughts above
+                {statusFilter === 'delayed'
+                  ? 'Items you delay will appear here'
+                  : 'Start capturing your thoughts above'}
               </p>
             </div>
           ) : (
-            items.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.7)',
-                  backdropFilter: 'blur(40px) saturate(180%)',
-                  WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-                  borderRadius: '20px',
-                  padding: '18px',
-                  marginBottom: '12px',
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 0 0 rgba(255, 255, 255, 0.5) inset',
-                  border: '0.5px solid rgba(255, 255, 255, 0.8)',
-                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1, marginRight: '16px' }}>
-                    <p style={{
-                      fontSize: '15px',
-                      lineHeight: '1.5',
-                      marginBottom: '12px',
-                      color: '#1a1a1a',
-                      fontWeight: '400'
-                    }}>
-                      {item.content}
-                    </p>
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      fontSize: '12px',
-                      color: '#8e8e93',
-                      gap: '10px',
-                      fontWeight: '500'
-                    }}>
-                      <span style={{
-                        background: item.source === 'voice' ? 'rgba(52, 199, 89, 0.1)' : 'rgba(102, 126, 234, 0.1)',
-                        color: item.source === 'voice' ? '#34c759' : '#667eea',
-                        padding: '4px 10px',
-                        borderRadius: '8px',
-                        fontSize: '11px',
-                        fontWeight: '600',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}>
-                        {item.source === 'voice' ? <Mic size={12} /> : <Plus size={12} />}
-                        {item.source === 'voice' ? 'Voice' : 'Manual'}
-                      </span>
-                      <span>
-                        {new Date(item.created_at).toLocaleString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: 'numeric',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-                    <button
-                      onClick={() => handleConvertToTask(item.id)}
-                      style={{
-                        padding: '10px 14px',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '10px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                        boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      <ArrowRight size={14} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      style={{
-                        padding: '10px',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        background: 'rgba(255, 59, 48, 0.1)',
-                        color: '#ff3b30',
-                        border: 'none',
-                        borderRadius: '10px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                        display: 'flex',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))
+            items.map((item) => <SwipeableInboxItem key={item.id} item={item} />)
           )}
         </div>
       </div>
@@ -439,7 +647,32 @@ export default function Inbox() {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
       `}</style>
+
+      {/* Conversion Modals */}
+      <TaskConversionModal
+        isOpen={taskConversionModal.isOpen}
+        onClose={() => setTaskConversionModal({ isOpen: false, item: null })}
+        inboxItem={taskConversionModal.item}
+        onConvert={handleTaskConversion}
+      />
+
+      <MemoConversionModal
+        isOpen={memoConversionModal.isOpen}
+        onClose={() => setMemoConversionModal({ isOpen: false, item: null })}
+        inboxItem={memoConversionModal.item}
+        onConvert={handleMemoConversion}
+      />
     </div>
   );
 }

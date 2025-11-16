@@ -2,6 +2,7 @@ const db = require('./db');
 const bcrypt = require('bcrypt');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
 
 async function seedDatabase() {
   try {
@@ -21,24 +22,41 @@ async function seedDatabase() {
       }
     }
 
-    // Check if admin user already exists
-    const adminExists = db.prepare('SELECT id FROM users WHERE email = ?').get('levan@sarke.ge');
+    // ========================================================================
+    // CRITICAL SECURITY FIX #2: Use environment variables for admin credentials
+    // ========================================================================
 
-    if (!adminExists) {
-      // Create admin user
-      const hashedPassword = await bcrypt.hash('levan0488', 10);
+    // Get admin credentials from environment variables
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    const adminName = process.env.ADMIN_NAME || 'Admin User';
 
-      const insertAdmin = db.prepare(`
-        INSERT INTO users (email, password_hash, name, email_verified, is_admin)
-        VALUES (?, ?, ?, 1, 1)
-      `);
-
-      insertAdmin.run('levan@sarke.ge', hashedPassword, 'Levan Bakhia');
-      console.log('Admin user created successfully');
-      console.log('Email: levan@sarke.ge');
-      console.log('Password: levan0488');
+    // Validate that admin credentials are provided
+    if (!adminEmail || !adminPassword) {
+      console.warn('⚠️  WARNING: ADMIN_EMAIL and ADMIN_PASSWORD not set in environment variables');
+      console.warn('⚠️  Skipping admin user creation. Please set these in your .env file and re-run seed.');
     } else {
-      console.log('Admin user already exists');
+      // Check if admin user already exists
+      const adminExists = db.prepare('SELECT id FROM users WHERE email = ?').get(adminEmail);
+
+      if (!adminExists) {
+        // Create admin user with environment variable credentials
+        const hashedPassword = await bcrypt.hash(adminPassword, 10);
+
+        const insertAdmin = db.prepare(`
+          INSERT INTO users (email, password_hash, name, email_verified, is_admin)
+          VALUES (?, ?, ?, 1, 1)
+        `);
+
+        insertAdmin.run(adminEmail, hashedPassword, adminName);
+
+        console.log('✅ Admin user created successfully');
+        console.log(`   Email: ${adminEmail}`);
+        console.log('   ⚠️  SECURITY: Change password immediately after first login!');
+        console.log('   Password is set from ADMIN_PASSWORD environment variable');
+      } else {
+        console.log('ℹ️  Admin user already exists');
+      }
     }
 
     // Initialize email settings if not exists
@@ -51,12 +69,13 @@ async function seedDatabase() {
       `);
 
       insertSettings.run();
-      console.log('Default email settings created (OpenAI API key needs to be configured in admin panel or via environment variable)');
+      console.log('✅ Default email settings created');
+      console.log('   Configure OpenAI API key and Postmark token in admin panel');
     }
 
-    console.log('Database seeded successfully!');
+    console.log('\n✅ Database seeded successfully!\n');
   } catch (error) {
-    console.error('Error seeding database:', error);
+    console.error('❌ Error seeding database:', error);
     process.exit(1);
   } finally {
     db.close();

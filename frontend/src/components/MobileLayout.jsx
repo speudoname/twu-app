@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Inbox, CheckSquare, User, Settings, LogOut, Menu, X } from 'lucide-react';
+import { Inbox, CheckSquare, BookOpen, User, Settings, LogOut, Menu, X } from 'lucide-react';
 
 export default function MobileLayout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -336,6 +336,48 @@ export default function MobileLayout({ children }) {
               letterSpacing: '-0.2px'
             }}>
               Tasks
+            </div>
+          </div>
+        </Link>
+
+        <Link
+          to="/memos"
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            textDecoration: 'none',
+            gap: '6px',
+            position: 'relative'
+          }}
+        >
+          <div style={{
+            padding: '10px 24px',
+            borderRadius: '14px',
+            background: isActive('/memos')
+              ? 'rgba(102, 126, 234, 0.1)'
+              : 'transparent',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            <BookOpen
+              size={24}
+              color={isActive('/memos') ? '#667eea' : '#8e8e93'}
+              strokeWidth={isActive('/memos') ? 2.5 : 2}
+            />
+            <div style={{
+              fontSize: '11px',
+              fontWeight: isActive('/memos') ? '600' : '500',
+              color: isActive('/memos') ? '#667eea' : '#8e8e93',
+              letterSpacing: '-0.2px'
+            }}>
+              Memos
             </div>
           </div>
         </Link>

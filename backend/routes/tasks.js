@@ -3,6 +3,10 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const db = require('../database/db');
 const authMiddleware = require('../middleware/auth');
+const { sanitizeText } = require('../utils/sanitize');
+const { transformTaskWithTags } = require('../utils/taskHelpers');
+const tagService = require('../services/tagService');
+const { buildTaskUpdateQuery } = require('../utils/dynamicUpdate');
 
 // All task routes require authentication
 router.use(authMiddleware);
@@ -10,16 +14,47 @@ router.use(authMiddleware);
 // Get all tasks for logged-in user
 router.get('/', (req, res) => {
   try {
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 100));
+    const cursor = req.query.cursor ? parseInt(req.query.cursor) : null;
+
+    // Build WHERE clause - if cursor provided, add id filter
+    const whereClause = cursor
+      ? 'WHERE t.user_id = ? AND t.deleted_at IS NULL AND t.id < ?'
+      : 'WHERE t.user_id = ? AND t.deleted_at IS NULL';
+
+    const params = cursor ? [req.user.id, cursor, limit + 1] : [req.user.id, limit + 1];
+
     const tasks = db.prepare(`
-      SELECT id, title, description, completed, created_at, updated_at
-      FROM tasks
-      WHERE user_id = ?
-      ORDER BY created_at DESC
-    `).all(req.user.id);
+      SELECT
+        t.id, t.title, t.description, t.completed, t.importance, t.urgency,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id,
+        t.created_at, t.updated_at,
+        GROUP_CONCAT(tag.id) as tag_ids,
+        GROUP_CONCAT(tag.name) as tag_names,
+        GROUP_CONCAT(tag.color) as tag_colors
+      FROM tasks t
+      LEFT JOIN task_tags tt ON t.id = tt.task_id
+      LEFT JOIN tags tag ON tt.tag_id = tag.id
+      ${whereClause}
+      GROUP BY t.id
+      ORDER BY t.id DESC
+      LIMIT ?
+    `).all(...params);
+
+    const hasMore = tasks.length > limit;
+    if (hasMore) tasks.pop(); // Remove the extra item
+
+    const transformedTasks = tasks.map(transformTaskWithTags);
+    const nextCursor = hasMore && tasks.length > 0 ? tasks[tasks.length - 1].id : null;
 
     res.json({
       success: true,
-      tasks
+      tasks: transformedTasks,
+      pagination: {
+        limit,
+        next_cursor: nextCursor,
+        has_more: hasMore
+      }
     });
 
   } catch (error) {
@@ -35,9 +70,18 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   try {
     const task = db.prepare(`
-      SELECT id, title, description, completed, created_at, updated_at
-      FROM tasks
-      WHERE id = ? AND user_id = ?
+      SELECT
+        t.id, t.title, t.description, t.completed, t.importance, t.urgency,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id,
+        t.created_at, t.updated_at,
+        GROUP_CONCAT(tag.id) as tag_ids,
+        GROUP_CONCAT(tag.name) as tag_names,
+        GROUP_CONCAT(tag.color) as tag_colors
+      FROM tasks t
+      LEFT JOIN task_tags tt ON t.id = tt.task_id
+      LEFT JOIN tags tag ON tt.tag_id = tag.id
+      WHERE t.id = ? AND t.user_id = ? AND t.deleted_at IS NULL
+      GROUP BY t.id
     `).get(req.params.id, req.user.id);
 
     if (!task) {
@@ -47,9 +91,12 @@ router.get('/:id', (req, res) => {
       });
     }
 
+    // Transform the grouped tag data into arrays
+    const transformedTask = transformTaskWithTags(task);
+
     res.json({
       success: true,
-      task
+      task: transformedTask
     });
 
   } catch (error) {
@@ -64,7 +111,14 @@ router.get('/:id', (req, res) => {
 // Create new task
 router.post('/', [
   body('title').trim().isLength({ min: 1 }).withMessage('Title is required'),
-  body('description').optional().trim()
+  body('description').optional().trim(),
+  body('why').optional().trim(),
+  body('importance').optional().isInt({ min: 0, max: 1000000 }),
+  body('urgency').optional().isInt({ min: 0, max: 1000000 }),
+  body('deadline').optional().isISO8601(),
+  body('parent_task_id').optional().isInt(),
+  body('source_inbox_id').optional().isInt(),
+  body('tags').optional().isArray()
 ], (req, res) => {
   try {
     const errors = validationResult(req);
@@ -75,21 +129,58 @@ router.post('/', [
       });
     }
 
-    const { title, description } = req.body;
+    const {
+      title, description, why, importance, urgency,
+      deadline, parent_task_id, source_inbox_id, tags
+    } = req.body;
 
     const stmt = db.prepare(`
-      INSERT INTO tasks (user_id, title, description)
-      VALUES (?, ?, ?)
+      INSERT INTO tasks (
+        user_id, title, description, why, importance, urgency,
+        deadline, parent_task_id, source_inbox_id
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const result = stmt.run(req.user.id, title, description || null);
+    const result = stmt.run(
+      req.user.id,
+      sanitizeText(title),
+      description ? sanitizeText(description) : null,
+      why ? sanitizeText(why) : null,
+      importance !== undefined ? importance : 500000,
+      urgency !== undefined ? urgency : 500000,
+      deadline || null,
+      parent_task_id || null,
+      source_inbox_id || null
+    );
 
-    // Fetch the created task
-    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid);
+    const taskId = result.lastInsertRowid;
+
+    // Handle tags if provided
+    if (tags && tags.length > 0) {
+      tagService.attachTagsToTask(taskId, tags, req.user.id);
+    }
+
+    // Fetch the created task with tags
+    const task = db.prepare(`
+      SELECT
+        t.*,
+        GROUP_CONCAT(tag.id) as tag_ids,
+        GROUP_CONCAT(tag.name) as tag_names,
+        GROUP_CONCAT(tag.color) as tag_colors
+      FROM tasks t
+      LEFT JOIN task_tags tt ON t.id = tt.task_id
+      LEFT JOIN tags tag ON tt.tag_id = tag.id
+      WHERE t.id = ?
+      GROUP BY t.id
+    `).get(taskId);
+
+    // Transform tags
+    const transformedTask = transformTaskWithTags(task);
 
     res.status(201).json({
       success: true,
-      task
+      task: transformedTask
     });
 
   } catch (error) {
@@ -105,7 +196,13 @@ router.post('/', [
 router.put('/:id', [
   body('title').optional().trim().isLength({ min: 1 }),
   body('description').optional().trim(),
-  body('completed').optional().isBoolean()
+  body('completed').optional().isBoolean(),
+  body('why').optional().trim(),
+  body('importance').optional().isInt({ min: 0, max: 1000000 }),
+  body('urgency').optional().isInt({ min: 0, max: 1000000 }),
+  body('deadline').optional().isISO8601(),
+  body('parent_task_id').optional().isInt(),
+  body('tags').optional().isArray()
 ], (req, res) => {
   try {
     const errors = validationResult(req);
@@ -119,7 +216,7 @@ router.put('/:id', [
     const { id } = req.params;
 
     // Check if task exists and belongs to user
-    const existingTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?')
+    const existingTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL')
       .get(id, req.user.id);
 
     if (!existingTask) {
@@ -129,49 +226,52 @@ router.put('/:id', [
       });
     }
 
-    // Build update query dynamically
-    const updates = [];
-    const values = [];
+    // Build update query using dynamic update utility
+    const { query, values, hasUpdates } = buildTaskUpdateQuery(
+      req.body,
+      id,
+      req.user.id,
+      sanitizeText
+    );
 
-    if (req.body.title !== undefined) {
-      updates.push('title = ?');
-      values.push(req.body.title);
-    }
-
-    if (req.body.description !== undefined) {
-      updates.push('description = ?');
-      values.push(req.body.description);
-    }
-
-    if (req.body.completed !== undefined) {
-      updates.push('completed = ?');
-      values.push(req.body.completed ? 1 : 0);
-    }
-
-    if (updates.length === 0) {
+    // Check if there's anything to update
+    if (!hasUpdates && req.body.tags === undefined) {
       return res.status(400).json({
         success: false,
         message: 'No fields to update'
       });
     }
 
-    updates.push('updated_at = CURRENT_TIMESTAMP');
-    values.push(id, req.user.id);
+    // Update task fields if any
+    if (hasUpdates) {
+      db.prepare(query).run(...values);
+    }
 
-    const updateQuery = `
-      UPDATE tasks
-      SET ${updates.join(', ')}
-      WHERE id = ? AND user_id = ?
-    `;
+    // Handle tags update if provided
+    if (req.body.tags !== undefined) {
+      tagService.updateTaskTags(id, req.body.tags, req.user.id);
+    }
 
-    db.prepare(updateQuery).run(...values);
+    // Fetch updated task with tags
+    const task = db.prepare(`
+      SELECT
+        t.*,
+        GROUP_CONCAT(tag.id) as tag_ids,
+        GROUP_CONCAT(tag.name) as tag_names,
+        GROUP_CONCAT(tag.color) as tag_colors
+      FROM tasks t
+      LEFT JOIN task_tags tt ON t.id = tt.task_id
+      LEFT JOIN tags tag ON tt.tag_id = tag.id
+      WHERE t.id = ?
+      GROUP BY t.id
+    `).get(id);
 
-    // Fetch updated task
-    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+    // Transform tags
+    const transformedTask = transformTaskWithTags(task);
 
     res.json({
       success: true,
-      task
+      task: transformedTask
     });
 
   } catch (error) {
@@ -189,7 +289,7 @@ router.patch('/:id/toggle', (req, res) => {
     const { id } = req.params;
 
     // Check if task exists and belongs to user
-    const existingTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?')
+    const existingTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL')
       .get(id, req.user.id);
 
     if (!existingTask) {
@@ -211,6 +311,13 @@ router.patch('/:id/toggle', (req, res) => {
     // Fetch updated task
     const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
 
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found after update'
+      });
+    }
+
     res.json({
       success: true,
       task
@@ -225,13 +332,13 @@ router.patch('/:id/toggle', (req, res) => {
   }
 });
 
-// Delete task
+// Delete task (soft delete)
 router.delete('/:id', (req, res) => {
   try {
     const { id } = req.params;
 
     // Check if task exists and belongs to user
-    const existingTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ?')
+    const existingTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL')
       .get(id, req.user.id);
 
     if (!existingTask) {
@@ -241,8 +348,8 @@ router.delete('/:id', (req, res) => {
       });
     }
 
-    // Delete task
-    db.prepare('DELETE FROM tasks WHERE id = ? AND user_id = ?').run(id, req.user.id);
+    // Soft delete task
+    db.prepare('UPDATE tasks SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').run(id, req.user.id);
 
     res.json({
       success: true,

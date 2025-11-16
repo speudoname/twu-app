@@ -26,10 +26,6 @@ async function transcribeAudio(audioFilePath, language = null) {
     const apiKey = getOpenAIKey();
     const openai = new OpenAI({ apiKey });
 
-    // Read the audio file and add .webm extension if not present
-    const fs = require('fs');
-    const path = require('path');
-
     // Rename file to have .webm extension
     const audioFileWithExt = audioFilePath.endsWith('.webm') ? audioFilePath : `${audioFilePath}.webm`;
     if (!audioFilePath.endsWith('.webm')) {
@@ -62,7 +58,6 @@ async function transcribeAudio(audioFilePath, language = null) {
     throw new Error(`Transcription failed: ${error.message}`);
   } finally {
     // Clean up: delete the temporary audio file
-    const fs = require('fs');
     try {
       const audioFileWithExt = audioFilePath.endsWith('.webm') ? audioFilePath : `${audioFilePath}.webm`;
       if (fs.existsSync(audioFileWithExt)) {

@@ -12,6 +12,7 @@ import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Inbox from './pages/Inbox';
 import Tasks from './pages/Tasks';
+import Memos from './pages/Memos';
 import Profile from './pages/Profile';
 import AdminSettings from './pages/AdminSettings';
 
@@ -48,6 +49,14 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <Tasks />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/memos"
+              element={
+                <ProtectedRoute>
+                  <Memos />
                 </ProtectedRoute>
               }
             />
@@ -98,6 +107,14 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <Tasks />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/memos"
+            element={
+              <ProtectedRoute>
+                <Memos />
               </ProtectedRoute>
             }
           />
