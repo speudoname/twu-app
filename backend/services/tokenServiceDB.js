@@ -10,8 +10,8 @@ const db = require('../database/db');
 // Tokens survive server restarts and work across multiple instances
 // ============================================================================
 
-const ACCESS_TOKEN_EXPIRY = '15m';   // 15 minutes
-const REFRESH_TOKEN_EXPIRY = '7d';   // 7 days
+const ACCESS_TOKEN_EXPIRY = '30d';   // 30 days - keep users logged in
+const REFRESH_TOKEN_EXPIRY = '90d';  // 90 days - long refresh window
 
 /**
  * Validates JWT secret is properly configured
@@ -70,7 +70,7 @@ async function generateTokenPair(userId, email, isAdmin = false, userAgent = nul
 
   // Calculate expiration
   const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
+  expiresAt.setDate(expiresAt.getDate() + 90); // 90 days from now
 
   // Store refresh token in database
   try {
