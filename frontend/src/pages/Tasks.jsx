@@ -18,6 +18,13 @@ export default function Tasks() {
   useEffect(() => {
     loadTasks();
     // Removed auto-focus to prevent keyboard popup on mobile
+
+    // Cleanup: blur input when component unmounts to prevent focus restoration on mobile
+    return () => {
+      if (inputRef.current) {
+        inputRef.current.blur();
+      }
+    };
   }, []);
 
   const loadTasks = async () => {

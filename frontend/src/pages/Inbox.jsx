@@ -23,6 +23,13 @@ export default function Inbox() {
   useEffect(() => {
     loadInboxItems();
     // Removed auto-focus to prevent keyboard popup on mobile
+
+    // Cleanup: blur input when component unmounts to prevent focus restoration on mobile
+    return () => {
+      if (inputRef.current) {
+        inputRef.current.blur();
+      }
+    };
   }, [statusFilter]);
 
   const loadInboxItems = async () => {
