@@ -165,12 +165,12 @@ export default function TaskConversionModal({ isOpen, onClose, inboxItem, onConv
       {/* Modal */}
       <div style={{
         position: 'fixed',
-        top: '5%',
+        top: 0,
         left: '50%',
         transform: 'translateX(-50%)',
         width: '95%',
         maxWidth: '600px',
-        height: '90%',
+        height: '100vh',
         background: 'rgba(255, 255, 255, 0.95)',
         backdropFilter: 'blur(40px) saturate(180%)',
         WebkitBackdropFilter: 'blur(40px) saturate(180%)',
