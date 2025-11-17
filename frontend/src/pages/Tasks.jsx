@@ -17,9 +17,7 @@ export default function Tasks() {
 
   useEffect(() => {
     loadTasks();
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
+    // Removed auto-focus to prevent keyboard popup on mobile
   }, []);
 
   const loadTasks = async () => {

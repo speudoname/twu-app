@@ -22,9 +22,7 @@ export default function Inbox() {
 
   useEffect(() => {
     loadInboxItems();
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
+    // Removed auto-focus to prevent keyboard popup on mobile
   }, [statusFilter]);
 
   const loadInboxItems = async () => {
