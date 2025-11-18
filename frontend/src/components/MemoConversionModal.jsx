@@ -117,12 +117,12 @@ export default function MemoConversionModal({ isOpen, onClose, inboxItem, onConv
       {/* Modal */}
       <div style={{
         position: 'fixed',
-        top: 0,
+        top: '2.5vh',
         left: '50%',
         transform: 'translateX(-50%)',
         width: '95%',
         maxWidth: '600px',
-        height: '100vh',
+        height: '95vh',
         background: 'rgba(255, 255, 255, 0.95)',
         backdropFilter: 'blur(40px) saturate(180%)',
         WebkitBackdropFilter: 'blur(40px) saturate(180%)',
@@ -394,7 +394,7 @@ export default function MemoConversionModal({ isOpen, onClose, inboxItem, onConv
 
         {/* Footer */}
         <div style={{
-          padding: '16px',
+          padding: '20px',
           borderTop: '0.5px solid rgba(0, 0, 0, 0.1)',
           display: 'flex',
           gap: '12px'

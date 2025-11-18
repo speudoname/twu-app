@@ -1,24 +1,30 @@
 import { useState, useRef, useCallback } from 'react';
 
 /**
- * Custom hook for handling swipe gestures on touch/mouse devices
+ * Custom hook for handling swipe gestures with reveal-confirm pattern
  *
  * @param {Object} options
- * @param {Function} options.onSwipeLeft - Callback when left swipe completes
- * @param {Function} options.onSwipeRight - Callback when right swipe completes
- * @param {number} options.threshold - Minimum distance (px) to trigger action (default: 100)
+ * @param {Function} options.onSwipeLeft - Callback when left swipe action is confirmed
+ * @param {Function} options.onSwipeRight - Callback when right swipe action is confirmed
+ * @param {number} options.threshold - Minimum distance (px) to trigger reveal (default: 100)
+ * @param {number} options.maxSwipeLeft - Maximum distance (px) for left swipe (default: 100)
+ * @param {number} options.maxSwipeRight - Maximum distance (px) for right swipe (default: 100)
  * @param {boolean} options.requireHorizontal - Only trigger on horizontal swipes (default: true)
  *
- * @returns {Object} { swipeX, isSwiping, handlers }
+ * @returns {Object} { swipeX, isSwiping, isRevealed, revealedDirection, confirmAction, cancelReveal, handlers }
  */
 export function useSwipeGesture({
   onSwipeLeft,
   onSwipeRight,
   threshold = 100,
+  maxSwipeLeft = 100,
+  maxSwipeRight = 100,
   requireHorizontal = true
 }) {
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
+  const [isRevealed, setIsRevealed] = useState(false);
+  const [revealedDirection, setRevealedDirection] = useState(null); // 'left' | 'right' | null
 
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
@@ -26,15 +32,39 @@ export function useSwipeGesture({
   const isHorizontalSwipe = useRef(false);
   const hasDeterminedDirection = useRef(false);
 
+  // Cancel the reveal and slide back to center
+  const cancelReveal = useCallback(() => {
+    setIsRevealed(false);
+    setRevealedDirection(null);
+    setSwipeX(0);
+    setIsSwiping(false);
+
+    // Reset refs
+    touchStartX.current = 0;
+    touchStartY.current = 0;
+    touchCurrentX.current = 0;
+    hasDeterminedDirection.current = false;
+    isHorizontalSwipe.current = false;
+  }, []);
+
   const handleStart = useCallback((clientX, clientY) => {
+    // If already revealed, cancel reveal on new touch
+    if (isRevealed) {
+      cancelReveal();
+      return;
+    }
+
     touchStartX.current = clientX;
     touchStartY.current = clientY;
     touchCurrentX.current = clientX;
     hasDeterminedDirection.current = false;
     isHorizontalSwipe.current = false;
-  }, []);
+  }, [isRevealed, cancelReveal]);
 
   const handleMove = useCallback((clientX, clientY) => {
+    // Don't allow swiping if already revealed
+    if (isRevealed) return;
+
     const deltaX = clientX - touchStartX.current;
     const deltaY = clientY - touchStartY.current;
 
@@ -54,11 +84,11 @@ export function useSwipeGesture({
       setIsSwiping(true);
       touchCurrentX.current = clientX;
 
-      // Limit swipe distance to reasonable bounds
-      const limitedDeltaX = Math.max(-200, Math.min(200, deltaX));
+      // Limit swipe distance to button widths
+      const limitedDeltaX = Math.max(-maxSwipeLeft, Math.min(maxSwipeRight, deltaX));
       setSwipeX(limitedDeltaX);
     }
-  }, [requireHorizontal]);
+  }, [requireHorizontal, isRevealed, maxSwipeLeft, maxSwipeRight]);
 
   const handleEnd = useCallback(() => {
     const finalDeltaX = touchCurrentX.current - touchStartX.current;
@@ -69,15 +99,23 @@ export function useSwipeGesture({
 
     if (completed && isHorizontalSwipe.current) {
       if (finalDeltaX < 0 && onSwipeLeft) {
-        // Swipe left
-        onSwipeLeft();
+        // Swipe left - lock at max left distance
+        setSwipeX(-maxSwipeLeft);
+        setIsRevealed(true);
+        setRevealedDirection('left');
+        setIsSwiping(false);
+        return; // Don't reset, keep revealed
       } else if (finalDeltaX > 0 && onSwipeRight) {
-        // Swipe right
-        onSwipeRight();
+        // Swipe right - lock at max right distance
+        setSwipeX(maxSwipeRight);
+        setIsRevealed(true);
+        setRevealedDirection('right');
+        setIsSwiping(false);
+        return; // Don't reset, keep revealed
       }
     }
 
-    // Reset state with animation
+    // If swipe didn't complete, snap back to center
     setSwipeX(0);
     setTimeout(() => setIsSwiping(false), 300);
 
@@ -87,7 +125,23 @@ export function useSwipeGesture({
     touchCurrentX.current = 0;
     hasDeterminedDirection.current = false;
     isHorizontalSwipe.current = false;
-  }, [threshold, onSwipeLeft, onSwipeRight]);
+  }, [threshold, maxSwipeLeft, maxSwipeRight, onSwipeLeft, onSwipeRight]);
+
+  // Confirm the revealed action (call the actual callback)
+  const confirmAction = useCallback(() => {
+    if (!isRevealed) return;
+
+    if (revealedDirection === 'left' && onSwipeLeft) {
+      onSwipeLeft();
+    } else if (revealedDirection === 'right' && onSwipeRight) {
+      onSwipeRight();
+    }
+
+    // Reset state
+    setIsRevealed(false);
+    setRevealedDirection(null);
+    setSwipeX(0);
+  }, [isRevealed, revealedDirection, onSwipeLeft, onSwipeRight]);
 
   // Touch event handlers
   const onTouchStart = useCallback((e) => {
@@ -98,11 +152,7 @@ export function useSwipeGesture({
   const onTouchMove = useCallback((e) => {
     const touch = e.touches[0];
     handleMove(touch.clientX, touch.clientY);
-
-    // Prevent scroll if swiping horizontally
-    if (isHorizontalSwipe.current) {
-      e.preventDefault();
-    }
+    // Note: preventDefault removed - using touchAction: 'pan-y' on elements instead
   }, [handleMove]);
 
   const onTouchEnd = useCallback(() => {
@@ -131,13 +181,21 @@ export function useSwipeGesture({
   const onMouseLeave = useCallback(() => {
     if (!mouseDownRef.current) return;
     mouseDownRef.current = false;
-    setSwipeX(0);
-    setIsSwiping(false);
-  }, []);
+
+    // If revealed, keep it revealed. Otherwise snap back.
+    if (!isRevealed) {
+      setSwipeX(0);
+      setIsSwiping(false);
+    }
+  }, [isRevealed]);
 
   return {
     swipeX,
     isSwiping,
+    isRevealed,
+    revealedDirection,
+    confirmAction,
+    cancelReveal,
     isHorizontalSwipe: isHorizontalSwipe.current,
     handlers: {
       onTouchStart,

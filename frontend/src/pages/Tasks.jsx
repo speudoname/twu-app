@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { tasksAPI } from '../services/api';
-import { Plus, Loader2, Trash2, Check, Circle, LayoutGrid, List, Tag, Calendar, AlertCircle, GitBranch } from 'lucide-react';
+import { Plus, Loader2, Trash2, Check, Circle, LayoutGrid, List, Tag, Calendar, AlertCircle, GitBranch, GripVertical } from 'lucide-react';
 import { useSwipeGesture } from '../hooks/useSwipeGesture';
 
 export default function Tasks() {
@@ -19,11 +19,25 @@ export default function Tasks() {
     loadTasks();
     // Removed auto-focus to prevent keyboard popup on mobile
 
+    // Global drag cleanup handler - reset drag state if drag gets stuck
+    const handleGlobalDragEnd = () => {
+      setDraggedTask(null);
+      setDropIndicator(null);
+    };
+
+    // Add listeners for drag cleanup
+    document.addEventListener('dragend', handleGlobalDragEnd);
+    document.addEventListener('drop', handleGlobalDragEnd);
+    document.addEventListener('mouseleave', handleGlobalDragEnd);
+
     // Cleanup: blur input when component unmounts to prevent focus restoration on mobile
     return () => {
       if (inputRef.current) {
         inputRef.current.blur();
       }
+      document.removeEventListener('dragend', handleGlobalDragEnd);
+      document.removeEventListener('drop', handleGlobalDragEnd);
+      document.removeEventListener('mouseleave', handleGlobalDragEnd);
     };
   }, []);
 
@@ -108,9 +122,12 @@ export default function Tasks() {
     setTimeout(() => setDraggedTask(task), 0);
   };
 
-  const handleDragEnd = () => {
-    setDraggedTask(null);
-    setDropIndicator(null);
+  const handleDragEnd = (e) => {
+    // Force cleanup regardless of drop success
+    setTimeout(() => {
+      setDraggedTask(null);
+      setDropIndicator(null);
+    }, 0);
   };
 
   const handleDragOver = (e, task) => {
@@ -128,6 +145,39 @@ export default function Tasks() {
       }
       return { taskId: task.id, position };
     });
+  };
+
+  const handleDropOnQuadrant = async (quadrant) => {
+    if (!draggedTask) return;
+
+    // Calculate scores based on quadrant
+    // Quadrant 1: High importance (750000), High urgency (750000)
+    // Quadrant 2: High importance (750000), Low urgency (250000)
+    // Quadrant 3: Low importance (250000), High urgency (750000)
+    // Quadrant 4: Low importance (250000), Low urgency (250000)
+
+    const quadrantScores = {
+      1: { importance: 750000, urgency: 750000 },
+      2: { importance: 750000, urgency: 250000 },
+      3: { importance: 250000, urgency: 750000 },
+      4: { importance: 250000, urgency: 250000 }
+    };
+
+    const newValues = quadrantScores[quadrant];
+
+    try {
+      const response = await tasksAPI.update(draggedTask.id, newValues);
+      if (response.data.success) {
+        setTasks(tasks.map(t =>
+          t.id === draggedTask.id ? { ...t, ...newValues } : t
+        ));
+      }
+    } catch (error) {
+      setError('Failed to move task to quadrant');
+    }
+
+    setDraggedTask(null);
+    setDropIndicator(null);
   };
 
   const handleDrop = async (targetTask) => {
@@ -306,10 +356,13 @@ export default function Tasks() {
       ? allTasks.find(t => t.id === task.parent_task_id)
       : null;
 
-    // Swipe gesture for delete
-    const { swipeX, isSwiping, handlers } = useSwipeGesture({
+    const [isDraggingCard, setIsDraggingCard] = useState(false);
+
+    // Swipe gesture for delete (only when not dragging)
+    const { swipeX, isSwiping, isRevealed, revealedDirection, confirmAction, cancelReveal, handlers } = useSwipeGesture({
       onSwipeRight: () => task.completed !== 1 && handleDeleteTask(task.id),
-      threshold: 100
+      threshold: 80,
+      maxSwipeRight: 100 // Delete button width
     });
 
     const isDragging = draggedTask?.id === task.id;
@@ -324,44 +377,77 @@ export default function Tasks() {
         borderRadius: '20px'
       }}
     >
-      {/* Delete button background (shown on swipe) */}
+      {/* Backdrop to cancel reveal */}
+      {isRevealed && (
+        <div
+          onClick={cancelReveal}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 1,
+            background: 'transparent'
+          }}
+        />
+      )}
+
+      {/* Delete area background - Gmail Style */}
       {task.completed !== 1 && (
         <div style={{
           position: 'absolute',
           top: 0,
           right: 0,
           bottom: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          paddingRight: '20px'
+          left: 0,
+          overflow: 'hidden',
+          zIndex: 2,
+          pointerEvents: 'none'
         }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            color: 'white',
-            fontWeight: '600',
-            fontSize: '15px',
-            opacity: swipeX > 20 ? 1 : 0,
-            transition: 'opacity 0.2s',
-            background: 'linear-gradient(135deg, #ff3b30 0%, #ff6b6b 100%)',
-            padding: '10px 16px',
-            borderRadius: '12px',
-            boxShadow: '0 4px 12px rgba(255, 59, 48, 0.3)'
-          }}>
-            <Trash2 size={18} />
-            Delete
-          </div>
+          {/* Delete Button - Fixed 100px width on right */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              confirmAction();
+            }}
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: '100px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              background: '#ff3b30',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'white',
+              fontWeight: '600',
+              fontSize: '14px',
+              padding: 0,
+              opacity: swipeX > 20 || (isRevealed && revealedDirection === 'right') ? 1 : 0,
+              transition: 'opacity 0.2s',
+              pointerEvents: (isRevealed && revealedDirection === 'right') ? 'auto' : 'none'
+            }}
+          >
+            <Trash2 size={22} strokeWidth={2.5} />
+            <span>Delete</span>
+          </button>
         </div>
       )}
 
       <div
         draggable={task.completed !== 1}
         onDragStart={(e) => {
+          setIsDraggingCard(true);
           handleDragStart(e, task);
         }}
         onDragEnd={(e) => {
+          setIsDraggingCard(false);
           handleDragEnd(e);
         }}
         onDragOver={(e) => {
@@ -377,23 +463,23 @@ export default function Tasks() {
           e.dataTransfer.getData('text/plain');
           handleDrop(task);
         }}
-        {...(task.completed !== 1 ? handlers : {})}
+        {...(task.completed !== 1 && !isDraggingCard && !draggedTask ? handlers : {})}
         style={{
           position: 'relative',
           background: task.completed === 1 ? 'rgba(255, 255, 255, 0.5)' : 'rgba(255, 255, 255, 0.7)',
           backdropFilter: 'blur(40px) saturate(180%)',
           WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-          borderRadius: '20px',
           padding: '16px',
           boxShadow: task.completed === 1
             ? '0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 0 0 rgba(255, 255, 255, 0.5) inset'
             : '0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 0 0 rgba(255, 255, 255, 0.5) inset',
           border: '0.5px solid rgba(255, 255, 255, 0.8)',
           opacity: isDragging ? 0.4 : (task.completed === 1 ? 0.7 : 1),
-          cursor: task.completed !== 1 ? 'move' : 'default',
+          cursor: task.completed !== 1 ? 'grab' : 'default',
           transform: task.completed !== 1 ? `translateX(${swipeX}px)` : 'none',
-          transition: isSwiping || isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          touchAction: 'pan-y'
+          transition: (isSwiping || isDragging || isRevealed) ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          touchAction: 'pan-y',
+          zIndex: isRevealed ? 3 : 1
         }}
       >
       <div style={{
@@ -594,14 +680,14 @@ export default function Tasks() {
       {showBelowIndicator && (
         <div style={{
           position: 'absolute',
-          bottom: '-6px',
+          bottom: '-8px',
           left: '0',
           right: '0',
-          height: '4px',
+          height: '6px',
           background: '#667eea',
-          borderRadius: '2px',
+          borderRadius: '3px',
           zIndex: 10,
-          boxShadow: '0 0 8px rgba(102, 126, 234, 0.6)',
+          boxShadow: '0 0 12px rgba(102, 126, 234, 0.8), 0 0 20px rgba(102, 126, 234, 0.4)',
           pointerEvents: 'none'
         }} />
       )}
@@ -875,15 +961,30 @@ export default function Tasks() {
                     {[1, 2, 3, 4].map(quadrant => (
                       <div
                         key={quadrant}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.dataTransfer.dropEffect = 'move';
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDropOnQuadrant(quadrant);
+                        }}
                         style={{
-                          background: 'rgba(255, 255, 255, 0.7)',
+                          background: draggedTask && getEisenhowerQuadrant(draggedTask) !== quadrant
+                            ? `${quadrantInfo[quadrant].color}10`
+                            : 'rgba(255, 255, 255, 0.7)',
                           backdropFilter: 'blur(40px) saturate(180%)',
                           WebkitBackdropFilter: 'blur(40px) saturate(180%)',
                           borderRadius: '20px',
                           padding: '16px',
-                          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 0 0 rgba(255, 255, 255, 0.5) inset',
+                          boxShadow: draggedTask && getEisenhowerQuadrant(draggedTask) !== quadrant
+                            ? `0 0 0 2px ${quadrantInfo[quadrant].color}`
+                            : '0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 0 0 rgba(255, 255, 255, 0.5) inset',
                           border: '0.5px solid rgba(255, 255, 255, 0.8)',
-                          transition: 'all 0.2s ease'
+                          transition: 'all 0.2s ease',
+                          minHeight: '200px'
                         }}
                       >
                         <div style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: `2px solid ${quadrantInfo[quadrant].color}` }}>

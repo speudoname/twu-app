@@ -40,7 +40,7 @@ export default function MobileLayout({ children }) {
         display: 'flex',
         justifyContent: 'space-around',
         alignItems: 'center',
-        padding: '0 20px',
+        padding: '0 4px',
         paddingBottom: 'env(safe-area-inset-bottom)',
         boxShadow: '0 -1px 0 0 rgba(0, 0, 0, 0.03)',
         zIndex: 100
@@ -60,8 +60,8 @@ export default function MobileLayout({ children }) {
           }}
         >
           <div style={{
-            padding: '10px 16px',
-            borderRadius: '14px',
+            padding: '8px 10px',
+            borderRadius: '12px',
             background: isActive('/inbox')
               ? 'rgba(102, 126, 234, 0.1)'
               : 'transparent',
@@ -69,18 +69,19 @@ export default function MobileLayout({ children }) {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '4px'
+            gap: '3px'
           }}>
             <Inbox
-              size={24}
+              size={22}
               color={isActive('/inbox') ? '#667eea' : '#8e8e93'}
               strokeWidth={isActive('/inbox') ? 2.5 : 2}
             />
             <div style={{
-              fontSize: '11px',
+              fontSize: '10px',
               fontWeight: isActive('/inbox') ? '600' : '500',
               color: isActive('/inbox') ? '#667eea' : '#8e8e93',
-              letterSpacing: '-0.2px'
+              letterSpacing: '-0.2px',
+              whiteSpace: 'nowrap'
             }}>
               Inbox
             </div>
@@ -102,8 +103,8 @@ export default function MobileLayout({ children }) {
           }}
         >
           <div style={{
-            padding: '10px 16px',
-            borderRadius: '14px',
+            padding: '8px 10px',
+            borderRadius: '12px',
             background: isActive('/tasks')
               ? 'rgba(102, 126, 234, 0.1)'
               : 'transparent',
@@ -111,18 +112,19 @@ export default function MobileLayout({ children }) {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '4px'
+            gap: '3px'
           }}>
             <CheckSquare
-              size={24}
+              size={22}
               color={isActive('/tasks') ? '#667eea' : '#8e8e93'}
               strokeWidth={isActive('/tasks') ? 2.5 : 2}
             />
             <div style={{
-              fontSize: '11px',
+              fontSize: '10px',
               fontWeight: isActive('/tasks') ? '600' : '500',
               color: isActive('/tasks') ? '#667eea' : '#8e8e93',
-              letterSpacing: '-0.2px'
+              letterSpacing: '-0.2px',
+              whiteSpace: 'nowrap'
             }}>
               Tasks
             </div>
@@ -144,8 +146,8 @@ export default function MobileLayout({ children }) {
           }}
         >
           <div style={{
-            padding: '10px 16px',
-            borderRadius: '14px',
+            padding: '8px 10px',
+            borderRadius: '12px',
             background: isActive('/memos')
               ? 'rgba(102, 126, 234, 0.1)'
               : 'transparent',
@@ -153,18 +155,19 @@ export default function MobileLayout({ children }) {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '4px'
+            gap: '3px'
           }}>
             <BookOpen
-              size={24}
+              size={22}
               color={isActive('/memos') ? '#667eea' : '#8e8e93'}
               strokeWidth={isActive('/memos') ? 2.5 : 2}
             />
             <div style={{
-              fontSize: '11px',
+              fontSize: '10px',
               fontWeight: isActive('/memos') ? '600' : '500',
               color: isActive('/memos') ? '#667eea' : '#8e8e93',
-              letterSpacing: '-0.2px'
+              letterSpacing: '-0.2px',
+              whiteSpace: 'nowrap'
             }}>
               Memos
             </div>
@@ -186,8 +189,8 @@ export default function MobileLayout({ children }) {
           }}
         >
           <div style={{
-            padding: '10px 16px',
-            borderRadius: '14px',
+            padding: '8px 10px',
+            borderRadius: '12px',
             background: isActive('/profile') || isActive('/admin/settings')
               ? 'rgba(102, 126, 234, 0.1)'
               : 'transparent',
@@ -195,18 +198,19 @@ export default function MobileLayout({ children }) {
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '4px'
+            gap: '3px'
           }}>
             <User
-              size={24}
+              size={22}
               color={isActive('/profile') || isActive('/admin/settings') ? '#667eea' : '#8e8e93'}
               strokeWidth={isActive('/profile') || isActive('/admin/settings') ? 2.5 : 2}
             />
             <div style={{
-              fontSize: '11px',
+              fontSize: '10px',
               fontWeight: isActive('/profile') || isActive('/admin/settings') ? '600' : '500',
               color: isActive('/profile') || isActive('/admin/settings') ? '#667eea' : '#8e8e93',
-              letterSpacing: '-0.2px'
+              letterSpacing: '-0.2px',
+              whiteSpace: 'nowrap'
             }}>
               Profile
             </div>

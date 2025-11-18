@@ -213,11 +213,65 @@ export default function Inbox() {
 
   // Swipeable Inbox Item Component
   const SwipeableInboxItem = ({ item }) => {
-    const { swipeX, isSwiping, handlers } = useSwipeGesture({
-      onSwipeLeft: () => handleDelete(item.id),
-      onSwipeRight: () => handleOpenTaskModal(item),
-      threshold: 100
+    const [showDelayOptions, setShowDelayOptions] = useState(false);
+    const [swipeXOverride, setSwipeXOverride] = useState(null);
+
+    const { swipeX, isSwiping, isRevealed, revealedDirection, confirmAction, cancelReveal, handlers } = useSwipeGesture({
+      onSwipeLeft: () => {}, // Delay + Delete on left swipe
+      onSwipeRight: () => {}, // Task + Memo on right swipe
+      threshold: 80,
+      maxSwipeLeft: showDelayOptions ? 240 : 120, // Expand to 240px when showing delay options
+      maxSwipeRight: 120 // Task + Memo buttons width (60px each)
     });
+
+    // When delay options are shown, expand the swipe distance
+    useEffect(() => {
+      if (showDelayOptions && isRevealed && revealedDirection === 'left') {
+        // Expand to full 240px
+        setSwipeXOverride(-240);
+      } else {
+        setSwipeXOverride(null);
+      }
+    }, [showDelayOptions, isRevealed, revealedDirection]);
+
+    // Reset delay options when swipe is cancelled
+    const handleCancelReveal = () => {
+      setShowDelayOptions(false);
+      setSwipeXOverride(null);
+      cancelReveal();
+    };
+
+    // Also reset when direction changes
+    useEffect(() => {
+      if (!isRevealed) {
+        setShowDelayOptions(false);
+        setSwipeXOverride(null);
+      }
+    }, [isRevealed]);
+
+    const handleDelay = async (hours) => {
+      try {
+        const delayUntil = new Date();
+        delayUntil.setHours(delayUntil.getHours() + hours);
+
+        // Call delay API
+        await inboxAPI.delay(item.id, delayUntil.toISOString());
+
+        // Remove item from list if in 'active' filter
+        if (statusFilter === 'active') {
+          setItems(items.filter((i) => i.id !== item.id));
+        } else {
+          // Reload to update the item
+          loadInboxItems();
+        }
+
+        setShowDelayOptions(false);
+        cancelReveal();
+      } catch (error) {
+        console.error('Failed to delay item:', error);
+        setError('Failed to delay item');
+      }
+    };
 
     const formatTime = (dateString) => {
       const date = new Date(dateString);
@@ -246,7 +300,23 @@ export default function Inbox() {
         overflow: 'hidden',
         borderRadius: '20px'
       }}>
-        {/* Action Buttons Behind */}
+        {/* Backdrop to cancel reveal */}
+        {isRevealed && (
+          <div
+            onClick={handleCancelReveal}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 1,
+              background: 'transparent'
+            }}
+          />
+        )}
+
+        {/* Action Buttons Behind - Gmail Style */}
         <div style={{
           position: 'absolute',
           top: 0,
@@ -254,47 +324,246 @@ export default function Inbox() {
           right: 0,
           bottom: 0,
           display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '0 20px'
+          overflow: 'hidden',
+          zIndex: 2,
+          pointerEvents: 'none'
         }}>
-          {/* Left: Convert to Task (shown on swipe right) */}
+          {/* Left: Task + Memo (shown on swipe right) */}
           <div style={{
             display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            color: 'white',
-            fontWeight: '600',
-            fontSize: '15px',
-            opacity: swipeX > 20 ? 1 : 0,
+            width: '120px',
+            opacity: swipeX > 20 || (isRevealed && revealedDirection === 'right') ? 1 : 0,
             transition: 'opacity 0.2s',
-            background: 'linear-gradient(135deg, #34c759 0%, #30d158 100%)',
-            padding: '10px 16px',
-            borderRadius: '12px',
-            boxShadow: '0 4px 12px rgba(52, 199, 89, 0.3)'
+            pointerEvents: (isRevealed && revealedDirection === 'right') ? 'auto' : 'none'
           }}>
-            <ListTodo size={18} />
-            Task
+            {/* Task Button - 60px width */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenTaskModal(item);
+                handleCancelReveal();
+              }}
+              style={{
+                width: '60px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                background: '#34c759',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'white',
+                fontWeight: '600',
+                fontSize: '11px',
+                padding: 0
+              }}
+            >
+              <ListTodo size={18} strokeWidth={2.5} />
+              <span>Task</span>
+            </button>
+
+            {/* Memo Button - 60px width */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenMemoModal(item);
+                handleCancelReveal();
+              }}
+              style={{
+                width: '60px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                background: '#667eea',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'white',
+                fontWeight: '600',
+                fontSize: '11px',
+                padding: 0
+              }}
+            >
+              <BookOpen size={18} strokeWidth={2.5} />
+              <span>Memo</span>
+            </button>
           </div>
 
-          {/* Right: Delete (shown on swipe left) */}
+          {/* Right: Delay + Delete or Delay Time Options (shown on swipe left) */}
           <div style={{
+            position: 'absolute',
+            right: 0,
+            top: 0,
+            bottom: 0,
             display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            color: 'white',
-            fontWeight: '600',
-            fontSize: '15px',
-            opacity: swipeX < -20 ? 1 : 0,
-            transition: 'opacity 0.2s',
-            background: 'linear-gradient(135deg, #ff3b30 0%, #ff6b6b 100%)',
-            padding: '10px 16px',
-            borderRadius: '12px',
-            boxShadow: '0 4px 12px rgba(255, 59, 48, 0.3)'
+            width: showDelayOptions ? '240px' : '120px',
+            opacity: swipeX < -20 || (isRevealed && revealedDirection === 'left') ? 1 : 0,
+            transition: 'opacity 0.2s, width 0.3s',
+            pointerEvents: (isRevealed && revealedDirection === 'left') ? 'auto' : 'none'
           }}>
-            <Trash2 size={18} />
-            Delete
+            {!showDelayOptions ? (
+              <>
+                {/* Delay Button - 60px width */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowDelayOptions(true);
+                  }}
+                  style={{
+                    width: '60px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    background: '#ff9500',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'white',
+                    fontWeight: '600',
+                    fontSize: '11px',
+                    padding: 0
+                  }}
+                >
+                  <Clock size={18} strokeWidth={2.5} />
+                  <span>Delay</span>
+                </button>
+
+                {/* Delete Button - 60px width */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(item.id);
+                    handleCancelReveal();
+                  }}
+                  style={{
+                    width: '60px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    background: '#ff3b30',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'white',
+                    fontWeight: '600',
+                    fontSize: '11px',
+                    padding: 0
+                  }}
+                >
+                  <Trash2 size={18} strokeWidth={2.5} />
+                  <span>Delete</span>
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Delay Time Options - Full height gradient buttons */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelay(1);
+                  }}
+                  style={{
+                    width: '60px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    background: 'linear-gradient(135deg, #ff9500 0%, #ff7700 100%)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'white',
+                    fontWeight: '600',
+                    fontSize: '13px',
+                    padding: 0
+                  }}
+                >
+                  <Clock size={16} strokeWidth={2.5} />
+                  <span>1h</span>
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelay(24);
+                  }}
+                  style={{
+                    width: '60px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    background: 'linear-gradient(135deg, #ff7700 0%, #ff6600 100%)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'white',
+                    fontWeight: '600',
+                    fontSize: '12px',
+                    padding: 0
+                  }}
+                >
+                  <Clock size={16} strokeWidth={2.5} />
+                  <span style={{ fontSize: '11px' }}>Tomorrow</span>
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelay(24 * 7);
+                  }}
+                  style={{
+                    width: '60px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    background: 'linear-gradient(135deg, #ff6600 0%, #ff5500 100%)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'white',
+                    fontWeight: '600',
+                    fontSize: '12px',
+                    padding: 0
+                  }}
+                >
+                  <Clock size={16} strokeWidth={2.5} />
+                  <span style={{ fontSize: '11px' }}>1 Week</span>
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelay(24 * 30);
+                  }}
+                  style={{
+                    width: '60px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    background: 'linear-gradient(135deg, #ff5500 0%, #ff3b30 100%)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'white',
+                    fontWeight: '600',
+                    fontSize: '12px',
+                    padding: 0
+                  }}
+                >
+                  <Clock size={16} strokeWidth={2.5} />
+                  <span style={{ fontSize: '11px' }}>1 Month</span>
+                </button>
+              </>
+            )}
           </div>
+
         </div>
 
         {/* Card Content */}
@@ -305,14 +574,14 @@ export default function Inbox() {
             background: 'rgba(255, 255, 255, 0.7)',
             backdropFilter: 'blur(40px) saturate(180%)',
             WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-            borderRadius: '20px',
             padding: '18px 20px',
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.06)',
             border: '0.5px solid rgba(255, 255, 255, 0.8)',
             cursor: 'grab',
-            transform: `translateX(${swipeX}px)`,
-            transition: isSwiping ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-            touchAction: 'pan-y'
+            transform: `translateX(${swipeXOverride !== null ? swipeXOverride : swipeX}px)`,
+            transition: (isSwiping || isRevealed || swipeXOverride !== null) ? swipeXOverride !== null ? 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)' : 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            touchAction: 'pan-y',
+            zIndex: isRevealed ? 3 : 1
           }}
         >
           {/* Content */}
