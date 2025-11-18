@@ -91,8 +91,10 @@ Shows git status, deployment status, server health, database sync status.
 
 **Deployment Flow:**
 ```
-Local Changes → GitHub (git push) → GitHub Actions → DigitalOcean Droplet
+Local Changes → GitHub (git push + release tag) → GitHub Actions → DigitalOcean Droplet (104.236.100.157)
 ```
+
+**CRITICAL:** Deployment is triggered ONLY by creating a release tag (v*), not by regular pushes to main!
 
 **Database Sync:**
 ```
