@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   deadline DATETIME,
   parent_task_id INTEGER,
   source_inbox_id INTEGER,
+  pomodoro_count INTEGER DEFAULT 0,
   deleted_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

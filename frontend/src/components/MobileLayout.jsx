@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { Inbox, CheckSquare, BookOpen, User } from 'lucide-react';
+import { CalendarCheck, Inbox, CheckSquare, BookOpen, User } from 'lucide-react';
 
 export default function MobileLayout({ children }) {
   const location = useLocation();
@@ -45,6 +45,49 @@ export default function MobileLayout({ children }) {
         boxShadow: '0 -1px 0 0 rgba(0, 0, 0, 0.03)',
         zIndex: 100
       }}>
+        <Link
+          to="/today"
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            textDecoration: 'none',
+            gap: '6px',
+            position: 'relative'
+          }}
+        >
+          <div style={{
+            padding: '8px 10px',
+            borderRadius: '12px',
+            background: isActive('/today')
+              ? 'rgba(102, 126, 234, 0.1)'
+              : 'transparent',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '3px'
+          }}>
+            <CalendarCheck
+              size={22}
+              color={isActive('/today') ? '#667eea' : '#8e8e93'}
+              strokeWidth={isActive('/today') ? 2.5 : 2}
+            />
+            <div style={{
+              fontSize: '10px',
+              fontWeight: isActive('/today') ? '600' : '500',
+              color: isActive('/today') ? '#667eea' : '#8e8e93',
+              letterSpacing: '-0.2px',
+              whiteSpace: 'nowrap'
+            }}>
+              Today
+            </div>
+          </div>
+        </Link>
+
         <Link
           to="/inbox"
           style={{

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { tasksAPI } from '../services/api';
-import { Plus, Loader2, Trash2, Check, Circle, LayoutGrid, List, Tag, Calendar, AlertCircle, GitBranch, GripVertical } from 'lucide-react';
+import { Plus, Loader2, Trash2, Check, Circle, LayoutGrid, List, Tag, Calendar, AlertCircle, GitBranch, GripVertical, Timer } from 'lucide-react';
 import { useSwipeGesture } from '../hooks/useSwipeGesture';
+import PomodoroTimer from '../components/PomodoroTimer';
 
 export default function Tasks() {
   const [tasks, setTasks] = useState([]);
@@ -13,6 +14,7 @@ export default function Tasks() {
   const [sortBy, setSortBy] = useState('eisenhower'); // 'eisenhower', 'urgency', 'importance'
   const [draggedTask, setDraggedTask] = useState(null);
   const [dropIndicator, setDropIndicator] = useState(null); // { taskId, position: 'above' | 'below' }
+  const [pomodoroTask, setPomodoroTask] = useState(null); // Task for which pomodoro is open
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -350,6 +352,19 @@ export default function Tasks() {
     return '#8e8e93';
   };
 
+  const handlePomodoroComplete = async (task, pomodoroCount) => {
+    try {
+      const response = await tasksAPI.updatePomodoro(task.id, pomodoroCount);
+      if (response.data.success) {
+        setTasks(tasks.map(t =>
+          t.id === task.id ? { ...t, pomodoro_count: pomodoroCount } : t
+        ));
+      }
+    } catch (error) {
+      setError('Failed to update pomodoro count');
+    }
+  };
+
   const TaskCard = ({ task, showQuadrant = false, allTasks = [] }) => {
     // Find parent task if this is a subtask
     const parentTask = task.parent_task_id
@@ -358,11 +373,13 @@ export default function Tasks() {
 
     const [isDraggingCard, setIsDraggingCard] = useState(false);
 
-    // Swipe gesture for delete (only when not dragging)
+    // Swipe gesture: left for delete, right for timer (only for incomplete tasks)
     const { swipeX, isSwiping, isRevealed, revealedDirection, confirmAction, cancelReveal, handlers } = useSwipeGesture({
-      onSwipeRight: () => task.completed !== 1 && handleDeleteTask(task.id),
+      onSwipeLeft: () => task.completed !== 1 && handleDeleteTask(task.id),
+      onSwipeRight: () => task.completed !== 1 && setPomodoroTask(task),
       threshold: 80,
-      maxSwipeRight: 100 // Delete button width
+      maxSwipeLeft: 100, // Delete button width
+      maxSwipeRight: 100 // Timer button width
     });
 
     const isDragging = draggedTask?.id === task.id;
@@ -393,7 +410,7 @@ export default function Tasks() {
         />
       )}
 
-      {/* Delete area background - Gmail Style */}
+      {/* Swipe action backgrounds - Gmail Style */}
       {task.completed !== 1 && (
         <div style={{
           position: 'absolute',
@@ -405,6 +422,39 @@ export default function Tasks() {
           zIndex: 2,
           pointerEvents: 'none'
         }}>
+          {/* Timer Button - Fixed 100px width on left */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              confirmAction();
+            }}
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: '100px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '4px',
+              background: '#667eea',
+              border: 'none',
+              cursor: 'pointer',
+              color: 'white',
+              fontWeight: '600',
+              fontSize: '14px',
+              padding: 0,
+              opacity: swipeX < -20 || (isRevealed && revealedDirection === 'right') ? 1 : 0,
+              transition: 'opacity 0.2s',
+              pointerEvents: (isRevealed && revealedDirection === 'right') ? 'auto' : 'none'
+            }}
+          >
+            <Timer size={22} strokeWidth={2.5} />
+            <span>Timer</span>
+          </button>
+
           {/* Delete Button - Fixed 100px width on right */}
           <button
             onClick={(e) => {
@@ -429,9 +479,9 @@ export default function Tasks() {
               fontWeight: '600',
               fontSize: '14px',
               padding: 0,
-              opacity: swipeX > 20 || (isRevealed && revealedDirection === 'right') ? 1 : 0,
+              opacity: swipeX > 20 || (isRevealed && revealedDirection === 'left') ? 1 : 0,
               transition: 'opacity 0.2s',
-              pointerEvents: (isRevealed && revealedDirection === 'right') ? 'auto' : 'none'
+              pointerEvents: (isRevealed && revealedDirection === 'left') ? 'auto' : 'none'
             }}
           >
             <Trash2 size={22} strokeWidth={2.5} />
@@ -602,6 +652,24 @@ export default function Tasks() {
                 letterSpacing: '0.3px'
               }}>
                 Q{getEisenhowerQuadrant(task)}
+              </span>
+            )}
+
+            {/* Pomodoro Count Badge */}
+            {task.pomodoro_count > 0 && (
+              <span style={{
+                background: 'rgba(102, 126, 234, 0.1)',
+                color: '#667eea',
+                padding: '3px 8px',
+                borderRadius: '6px',
+                fontSize: '11px',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px'
+              }}>
+                <Timer size={10} />
+                {task.pomodoro_count} {task.pomodoro_count === 1 ? 'pomodoro' : 'pomodoros'}
               </span>
             )}
 
@@ -1041,6 +1109,16 @@ export default function Tasks() {
           )}
         </div>
       </div>
+
+      {/* Pomodoro Timer Modal */}
+      {pomodoroTask && (
+        <PomodoroTimer
+          isOpen={!!pomodoroTask}
+          onClose={() => setPomodoroTask(null)}
+          taskTitle={pomodoroTask.title}
+          onPomodoroComplete={(count) => handlePomodoroComplete(pomodoroTask, count)}
+        />
+      )}
 
       <style>{`
         .spin {

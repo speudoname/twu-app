@@ -10,6 +10,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import Today from './pages/Today';
 import Inbox from './pages/Inbox';
 import Tasks from './pages/Tasks';
 import Memos from './pages/Memos';
@@ -36,6 +37,14 @@ function AppContent() {
         <MobileLayout>
           <Routes>
             {/* Protected routes */}
+            <Route
+              path="/today"
+              element={
+                <ProtectedRoute>
+                  <Today />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/inbox"
               element={
@@ -82,7 +91,7 @@ function AppContent() {
             />
 
             {/* Default redirect */}
-            <Route path="/" element={<Navigate to="/inbox" replace />} />
+            <Route path="/" element={<Navigate to="/today" replace />} />
           </Routes>
         </MobileLayout>
       ) : (
@@ -94,6 +103,14 @@ function AppContent() {
           <Route path="/reset-password/:token" element={<ResetPassword />} />
 
           {/* Protected routes */}
+          <Route
+            path="/today"
+            element={
+              <ProtectedRoute>
+                <Today />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/inbox"
             element={
@@ -140,7 +157,7 @@ function AppContent() {
           />
 
           {/* Default redirect */}
-          <Route path="/" element={<Navigate to="/inbox" replace />} />
+          <Route path="/" element={<Navigate to="/today" replace />} />
         </Routes>
       )}
     </div>

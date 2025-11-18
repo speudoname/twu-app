@@ -27,7 +27,7 @@ router.get('/', (req, res) => {
     const tasks = db.prepare(`
       SELECT
         t.id, t.title, t.description, t.completed, t.importance, t.urgency,
-        t.why, t.deadline, t.parent_task_id, t.source_inbox_id,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
         t.created_at, t.updated_at,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
@@ -72,7 +72,7 @@ router.get('/:id', (req, res) => {
     const task = db.prepare(`
       SELECT
         t.id, t.title, t.description, t.completed, t.importance, t.urgency,
-        t.why, t.deadline, t.parent_task_id, t.source_inbox_id,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
         t.created_at, t.updated_at,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
@@ -328,6 +328,61 @@ router.patch('/:id/toggle', (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to toggle task'
+    });
+  }
+});
+
+// Update pomodoro count
+router.patch('/:id/pomodoro', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { count } = req.body;
+
+    // Check if task exists and belongs to user
+    const existingTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL')
+      .get(id, req.user.id);
+
+    if (!existingTask) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    // Update pomodoro count
+    db.prepare(`
+      UPDATE tasks
+      SET pomodoro_count = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).run(count, id, req.user.id);
+
+    // Fetch updated task with tags
+    const task = db.prepare(`
+      SELECT
+        t.*,
+        GROUP_CONCAT(tag.id) as tag_ids,
+        GROUP_CONCAT(tag.name) as tag_names,
+        GROUP_CONCAT(tag.color) as tag_colors
+      FROM tasks t
+      LEFT JOIN task_tags tt ON t.id = tt.task_id
+      LEFT JOIN tags tag ON tt.tag_id = tag.id
+      WHERE t.id = ?
+      GROUP BY t.id
+    `).get(id);
+
+    // Transform tags
+    const transformedTask = transformTaskWithTags(task);
+
+    res.json({
+      success: true,
+      task: transformedTask
+    });
+
+  } catch (error) {
+    console.error('Error updating pomodoro count:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update pomodoro count'
     });
   }
 });
