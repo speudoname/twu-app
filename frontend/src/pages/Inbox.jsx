@@ -56,7 +56,9 @@ export default function Inbox() {
         source: 'manual',
       });
 
-      setItems([response.data, ...items]);
+      // Ensure we're using the correct data structure from the API response
+      const newItem = response.data.item || response.data;
+      setItems([newItem, ...items]);
       setNewContent('');
       setError('');
 
@@ -220,15 +222,15 @@ export default function Inbox() {
       onSwipeLeft: () => {}, // Delay + Delete on left swipe
       onSwipeRight: () => {}, // Task + Memo on right swipe
       threshold: 80,
-      maxSwipeLeft: showDelayOptions ? 240 : 120, // Expand to 240px when showing delay options
-      maxSwipeRight: 120 // Task + Memo buttons width (60px each)
+      maxSwipeLeft: showDelayOptions ? 320 : 160, // Expand to 320px when showing delay options (80px x 4)
+      maxSwipeRight: 160 // Task + Memo buttons width (80px each)
     });
 
     // When delay options are shown, expand the swipe distance
     useEffect(() => {
       if (showDelayOptions && isRevealed && revealedDirection === 'left') {
-        // Expand to full 240px
-        setSwipeXOverride(-240);
+        // Expand to full 320px (80px x 4 buttons)
+        setSwipeXOverride(-320);
       } else {
         setSwipeXOverride(null);
       }
@@ -331,12 +333,12 @@ export default function Inbox() {
           {/* Left: Task + Memo (shown on swipe right) */}
           <div style={{
             display: 'flex',
-            width: '120px',
+            width: '160px',
             opacity: swipeX > 20 || (isRevealed && revealedDirection === 'right') ? 1 : 0,
             transition: 'opacity 0.2s',
             pointerEvents: (isRevealed && revealedDirection === 'right') ? 'auto' : 'none'
           }}>
-            {/* Task Button - 60px width */}
+            {/* Task Button - 80px width */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -344,7 +346,7 @@ export default function Inbox() {
                 handleCancelReveal();
               }}
               style={{
-                width: '60px',
+                width: '80px',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -363,7 +365,7 @@ export default function Inbox() {
               <span>Task</span>
             </button>
 
-            {/* Memo Button - 60px width */}
+            {/* Memo Button - 80px width */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -371,7 +373,7 @@ export default function Inbox() {
                 handleCancelReveal();
               }}
               style={{
-                width: '60px',
+                width: '80px',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
@@ -398,21 +400,21 @@ export default function Inbox() {
             top: 0,
             bottom: 0,
             display: 'flex',
-            width: showDelayOptions ? '240px' : '120px',
+            width: showDelayOptions ? '320px' : '160px',
             opacity: swipeX < -20 || (isRevealed && revealedDirection === 'left') ? 1 : 0,
             transition: 'opacity 0.2s, width 0.3s',
             pointerEvents: (isRevealed && revealedDirection === 'left') ? 'auto' : 'none'
           }}>
             {!showDelayOptions ? (
               <>
-                {/* Delay Button - 60px width */}
+                {/* Delay Button - 80px width */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowDelayOptions(true);
                   }}
                   style={{
-                    width: '60px',
+                    width: '80px',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -431,7 +433,7 @@ export default function Inbox() {
                   <span>Delay</span>
                 </button>
 
-                {/* Delete Button - 60px width */}
+                {/* Delete Button - 80px width */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -439,7 +441,7 @@ export default function Inbox() {
                     handleCancelReveal();
                   }}
                   style={{
-                    width: '60px',
+                    width: '80px',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -467,7 +469,7 @@ export default function Inbox() {
                     handleDelay(1);
                   }}
                   style={{
-                    width: '60px',
+                    width: '80px',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -492,7 +494,7 @@ export default function Inbox() {
                     handleDelay(24);
                   }}
                   style={{
-                    width: '60px',
+                    width: '80px',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -517,7 +519,7 @@ export default function Inbox() {
                     handleDelay(24 * 7);
                   }}
                   style={{
-                    width: '60px',
+                    width: '80px',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
@@ -542,7 +544,7 @@ export default function Inbox() {
                     handleDelay(24 * 30);
                   }}
                   style={{
-                    width: '60px',
+                    width: '80px',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
