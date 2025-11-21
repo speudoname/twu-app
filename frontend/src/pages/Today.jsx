@@ -28,7 +28,11 @@ export default function Today() {
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+      // Use local date format instead of UTC to match server
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const todayStr = `${year}-${month}-${day}`; // YYYY-MM-DD in local time
 
       // Today section: tasks with planned_for_today = today AND not completed
       const todayFiltered = allTasks.filter(task =>
