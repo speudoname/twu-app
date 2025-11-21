@@ -15,6 +15,7 @@ export default function Tasks() {
   const [draggedTask, setDraggedTask] = useState(null);
   const [dropIndicator, setDropIndicator] = useState(null); // { taskId, position: 'above' | 'below' }
   const [pomodoroTask, setPomodoroTask] = useState(null); // Task for which pomodoro is open
+  const [hoveredTaskId, setHoveredTaskId] = useState(null); // Track which task is hovered for desktop controls
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -382,11 +383,14 @@ export default function Tasks() {
       maxSwipeRight: 100 // Timer button width
     });
 
+    const isHovered = hoveredTaskId === task.id;
     const isDragging = draggedTask?.id === task.id;
     const showBelowIndicator = dropIndicator?.taskId === task.id && dropIndicator.position === 'below';
 
     return (
     <div
+      onMouseEnter={() => setHoveredTaskId(task.id)}
+      onMouseLeave={() => setHoveredTaskId(null)}
       style={{
         position: 'relative',
         marginBottom: '12px',
@@ -741,6 +745,69 @@ export default function Tasks() {
             ))}
           </div>
         </div>
+
+        {/* Desktop Action Buttons - Show on hover */}
+        {task.completed !== 1 && isHovered && !isSwiping && (
+          <div style={{
+            position: 'absolute',
+            right: '16px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            gap: '8px',
+            zIndex: 10
+          }}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setPomodoroTask(task);
+              }}
+              style={{
+                background: '#667eea',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '10px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
+              onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+              title="Start Pomodoro"
+            >
+              <Timer size={18} strokeWidth={2.5} />
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDeleteTask(task.id);
+              }}
+              style={{
+                background: '#ff3b30',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '10px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                boxShadow: '0 2px 8px rgba(255, 59, 48, 0.3)',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
+              onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+              title="Delete Task"
+            >
+              <Trash2 size={18} strokeWidth={2.5} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
 
