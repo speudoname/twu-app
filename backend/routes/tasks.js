@@ -27,7 +27,7 @@ router.get('/', (req, res) => {
     const tasks = db.prepare(`
       SELECT
         t.id, t.title, t.description, t.completed, t.importance, t.urgency,
-        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count, t.time_spent_minutes,
         t.planned_for_today, t.created_at, t.updated_at,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
@@ -72,7 +72,7 @@ router.get('/:id', (req, res) => {
     const task = db.prepare(`
       SELECT
         t.id, t.title, t.description, t.completed, t.importance, t.urgency,
-        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count, t.time_spent_minutes,
         t.planned_for_today, t.created_at, t.updated_at,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
@@ -165,7 +165,7 @@ router.post('/', [
     const task = db.prepare(`
       SELECT
         t.id, t.title, t.description, t.completed, t.importance, t.urgency,
-        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count, t.time_spent_minutes,
         t.planned_for_today, t.created_at, t.updated_at, t.deleted_at, t.user_id,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
@@ -258,7 +258,7 @@ router.put('/:id', [
     const task = db.prepare(`
       SELECT
         t.id, t.title, t.description, t.completed, t.importance, t.urgency,
-        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count, t.time_spent_minutes,
         t.planned_for_today, t.created_at, t.updated_at, t.deleted_at, t.user_id,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
@@ -316,7 +316,7 @@ router.patch('/:id/toggle', (req, res) => {
     const task = db.prepare(`
       SELECT
         t.id, t.title, t.description, t.completed, t.importance, t.urgency,
-        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count, t.time_spent_minutes,
         t.planned_for_today, t.created_at, t.updated_at,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
@@ -380,7 +380,7 @@ router.patch('/:id/pomodoro', (req, res) => {
     const task = db.prepare(`
       SELECT
         t.id, t.title, t.description, t.completed, t.importance, t.urgency,
-        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count, t.time_spent_minutes,
         t.planned_for_today, t.created_at, t.updated_at,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
@@ -405,6 +405,71 @@ router.patch('/:id/pomodoro', (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update pomodoro count'
+    });
+  }
+});
+
+// Add time spent to task
+router.patch('/:id/add-time', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { minutes } = req.body;
+
+    // Validate minutes
+    if (minutes === undefined || typeof minutes !== 'number' || minutes < 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid minutes value is required'
+      });
+    }
+
+    // Check if task exists and belongs to user
+    const existingTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL')
+      .get(id, req.user.id);
+
+    if (!existingTask) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    // Add minutes to existing time_spent_minutes
+    db.prepare(`
+      UPDATE tasks
+      SET time_spent_minutes = time_spent_minutes + ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).run(minutes, id, req.user.id);
+
+    // Fetch updated task with tags
+    const task = db.prepare(`
+      SELECT
+        t.id, t.title, t.description, t.completed, t.importance, t.urgency,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count, t.time_spent_minutes,
+        t.planned_for_today, t.created_at, t.updated_at,
+        GROUP_CONCAT(tag.id) as tag_ids,
+        GROUP_CONCAT(tag.name) as tag_names,
+        GROUP_CONCAT(tag.color) as tag_colors
+      FROM tasks t
+      LEFT JOIN task_tags tt ON t.id = tt.task_id
+      LEFT JOIN tags tag ON tt.tag_id = tag.id
+      WHERE t.id = ?
+      GROUP BY t.id
+    `).get(id);
+
+    // Transform tags
+    const transformedTask = transformTaskWithTags(task);
+
+    res.json({
+      success: true,
+      task: transformedTask
+    });
+
+  } catch (error) {
+    console.error('Error adding time to task:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add time to task'
     });
   }
 });
@@ -441,7 +506,7 @@ router.patch('/:id/plan-today', (req, res) => {
     const task = db.prepare(`
       SELECT
         t.id, t.title, t.description, t.completed, t.importance, t.urgency,
-        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count, t.time_spent_minutes,
         t.planned_for_today, t.created_at, t.updated_at,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,

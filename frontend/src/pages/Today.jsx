@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { tasksAPI } from '../services/api';
-import { Loader2, Check, Circle, CalendarCheck, Timer, Trash2, X, Clock } from 'lucide-react';
+import { Loader2, Check, Circle, CalendarCheck, Timer, Trash2, X, Clock, Tag, AlertCircle } from 'lucide-react';
 import PomodoroTimer from '../components/PomodoroTimer';
 
 export default function Today() {
@@ -104,6 +104,17 @@ export default function Today() {
         await loadTodayTasks();
       } catch (error) {
         console.error('Failed to update pomodoro count:', error);
+      }
+    }
+  };
+
+  const handleAddTime = async (minutes) => {
+    if (pomodoroTask && minutes > 0) {
+      try {
+        await tasksAPI.addTime(pomodoroTask.id, minutes);
+        await loadTodayTasks();
+      } catch (error) {
+        console.error('Failed to add time:', error);
       }
     }
   };
@@ -284,28 +295,95 @@ export default function Today() {
                 color: '#1a1a1a',
                 fontWeight: '500',
                 lineHeight: '1.4',
-                marginBottom: task.pomodoro_count ? '8px' : 0
+                marginBottom: (task.pomodoro_count || task.time_spent_minutes || task.deadline || (task.tags && task.tags.length > 0)) ? '8px' : 0
               }}>
                 {task.title}
               </div>
 
-              {/* Pomodoro count badge */}
-              {task.pomodoro_count > 0 && (
-                <span style={{
-                  background: 'rgba(102, 126, 234, 0.1)',
-                  color: '#667eea',
-                  padding: '3px 8px',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  fontWeight: '600',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '3px'
-                }}>
-                  <Timer size={10} />
-                  {task.pomodoro_count}
-                </span>
-              )}
+              {/* Metadata row */}
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '6px',
+                alignItems: 'center'
+              }}>
+                {/* Time spent badge */}
+                {task.time_spent_minutes > 0 && (
+                  <span style={{
+                    background: 'rgba(102, 126, 234, 0.1)',
+                    color: '#667eea',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px'
+                  }}>
+                    <Clock size={10} />
+                    {task.time_spent_minutes >= 60
+                      ? `${Math.floor(task.time_spent_minutes / 60)}h ${task.time_spent_minutes % 60}m`
+                      : `${task.time_spent_minutes}m`}
+                  </span>
+                )}
+
+                {/* Pomodoro count badge */}
+                {task.pomodoro_count > 0 && (
+                  <span style={{
+                    background: 'rgba(102, 126, 234, 0.1)',
+                    color: '#667eea',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px'
+                  }}>
+                    <Timer size={10} />
+                    {task.pomodoro_count}
+                  </span>
+                )}
+
+                {/* Deadline badge */}
+                {task.deadline && (
+                  <span style={{
+                    background: 'rgba(255, 149, 0, 0.1)',
+                    color: '#ff9500',
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px'
+                  }}>
+                    <AlertCircle size={10} />
+                    {new Date(task.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                )}
+
+                {/* Tags */}
+                {task.tags && task.tags.length > 0 && task.tags.map(tag => (
+                  <span
+                    key={tag.id}
+                    style={{
+                      background: `${tag.color}15`,
+                      color: tag.color,
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px'
+                    }}
+                  >
+                    <Tag size={10} />
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -600,6 +678,7 @@ export default function Today() {
           isOpen={!!pomodoroTask}
           onClose={() => setPomodoroTask(null)}
           onPomodoroComplete={handlePomodoroComplete}
+          onAddTime={handleAddTime}
           taskTitle={pomodoroTask.title}
         />
       )}

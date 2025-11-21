@@ -1,20 +1,61 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Play, Pause, RotateCcw, X, Timer } from 'lucide-react';
 
 const POMODORO_DURATION = 25 * 60; // 25 minutes in seconds
 const SHORT_BREAK = 5 * 60; // 5 minutes
 const LONG_BREAK = 15 * 60; // 15 minutes
 
-export default function PomodoroTimer({ isOpen, onClose, onPomodoroComplete, taskTitle }) {
+export default function PomodoroTimer({ isOpen, onClose, onPomodoroComplete, onAddTime, taskTitle }) {
   const [timeLeft, setTimeLeft] = useState(POMODORO_DURATION);
   const [isRunning, setIsRunning] = useState(false);
   const [mode, setMode] = useState('work'); // 'work', 'shortBreak', 'longBreak'
   const [pomodorosCompleted, setPomodorosCompleted] = useState(0);
   const intervalRef = useRef(null);
   const audioRef = useRef(null);
+  const sessionStartTimeRef = useRef(null); // Track when current session started
+  const lastSavedTimeRef = useRef(0); // Track last saved elapsed time for this session
+
+  // Function to save elapsed work time to backend
+  const saveElapsedTime = useCallback(() => {
+    if (mode !== 'work' || !sessionStartTimeRef.current) return;
+
+    const totalDuration = POMODORO_DURATION;
+    const elapsedSeconds = totalDuration - timeLeft;
+    const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+
+    // Only save if we have at least 1 minute and haven't saved this time yet
+    const minutesToSave = elapsedMinutes - lastSavedTimeRef.current;
+    if (minutesToSave > 0 && onAddTime) {
+      onAddTime(minutesToSave);
+      lastSavedTimeRef.current = elapsedMinutes;
+    }
+  }, [mode, timeLeft, onAddTime]);
+
+  // Save time when pausing
+  useEffect(() => {
+    if (!isRunning && sessionStartTimeRef.current && mode === 'work') {
+      saveElapsedTime();
+    }
+  }, [isRunning, mode, saveElapsedTime]);
+
+  // Save time when closing the modal
+  useEffect(() => {
+    if (!isOpen && sessionStartTimeRef.current && mode === 'work') {
+      saveElapsedTime();
+      // Reset session tracking when modal closes
+      sessionStartTimeRef.current = null;
+      lastSavedTimeRef.current = 0;
+    }
+  }, [isOpen, mode, saveElapsedTime]);
 
   useEffect(() => {
     if (isRunning && timeLeft > 0) {
+      // Track when we start a session
+      if (!sessionStartTimeRef.current) {
+        sessionStartTimeRef.current = Date.now();
+        lastSavedTimeRef.current = 0;
+      }
+
       intervalRef.current = setInterval(() => {
         setTimeLeft(prev => {
           if (prev <= 1) {
@@ -40,15 +81,52 @@ export default function PomodoroTimer({ isOpen, onClose, onPomodoroComplete, tas
   const handleTimerComplete = () => {
     setIsRunning(false);
 
-    // Play notification sound
+    // Play notification sound using Web Audio API
     try {
-      const audio = new Audio('/notification.mp3');
-      audio.play().catch(e => console.log('Audio play failed:', e));
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+      // Create a pleasant bell-like sound
+      const playTone = (frequency, startTime, duration) => {
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        oscillator.frequency.value = frequency;
+        oscillator.type = 'sine';
+
+        // Bell-like envelope
+        gainNode.gain.setValueAtTime(0, startTime);
+        gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+      };
+
+      // Play a pleasant chime sequence
+      const now = audioContext.currentTime;
+      playTone(880, now, 0.3);        // A5
+      playTone(1108.73, now + 0.15, 0.3); // C#6
+      playTone(1318.51, now + 0.3, 0.5);  // E6
+
     } catch (e) {
       console.log('Audio error:', e);
     }
 
     if (mode === 'work') {
+      // Save the full 25 minutes for completed pomodoro
+      const fullMinutes = Math.floor(POMODORO_DURATION / 60);
+      const minutesToSave = fullMinutes - lastSavedTimeRef.current;
+      if (minutesToSave > 0 && onAddTime) {
+        onAddTime(minutesToSave);
+      }
+
+      // Reset session tracking for next pomodoro
+      sessionStartTimeRef.current = null;
+      lastSavedTimeRef.current = 0;
+
       const newCount = pomodorosCompleted + 1;
       setPomodorosCompleted(newCount);
       onPomodoroComplete(newCount);
@@ -73,8 +151,15 @@ export default function PomodoroTimer({ isOpen, onClose, onPomodoroComplete, tas
   };
 
   const resetTimer = () => {
+    // Save any elapsed time before resetting
+    if (mode === 'work' && sessionStartTimeRef.current) {
+      saveElapsedTime();
+    }
     setIsRunning(false);
     setTimeLeft(mode === 'work' ? POMODORO_DURATION : (mode === 'shortBreak' ? SHORT_BREAK : LONG_BREAK));
+    // Reset session tracking
+    sessionStartTimeRef.current = null;
+    lastSavedTimeRef.current = 0;
   };
 
   const formatTime = (seconds) => {
