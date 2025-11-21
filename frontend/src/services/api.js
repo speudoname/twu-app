@@ -80,6 +80,7 @@ export const tasksAPI = {
   update: (id, data) => api.put(`/tasks/${id}`, data),
   toggle: (id) => api.patch(`/tasks/${id}/toggle`),
   updatePomodoro: (id, count) => api.patch(`/tasks/${id}/pomodoro`, { count }),
+  planToday: (id) => api.patch(`/tasks/${id}/plan-today`),
   delete: (id) => api.delete(`/tasks/${id}`),
 };
 

@@ -28,7 +28,7 @@ router.get('/', (req, res) => {
       SELECT
         t.id, t.title, t.description, t.completed, t.importance, t.urgency,
         t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
-        t.created_at, t.updated_at,
+        t.planned_for_today, t.created_at, t.updated_at,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
         GROUP_CONCAT(tag.color) as tag_colors
@@ -73,7 +73,7 @@ router.get('/:id', (req, res) => {
       SELECT
         t.id, t.title, t.description, t.completed, t.importance, t.urgency,
         t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
-        t.created_at, t.updated_at,
+        t.planned_for_today, t.created_at, t.updated_at,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
         GROUP_CONCAT(tag.color) as tag_colors
@@ -164,7 +164,9 @@ router.post('/', [
     // Fetch the created task with tags
     const task = db.prepare(`
       SELECT
-        t.*,
+        t.id, t.title, t.description, t.completed, t.importance, t.urgency,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
+        t.planned_for_today, t.created_at, t.updated_at, t.deleted_at, t.user_id,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
         GROUP_CONCAT(tag.color) as tag_colors
@@ -255,7 +257,9 @@ router.put('/:id', [
     // Fetch updated task with tags
     const task = db.prepare(`
       SELECT
-        t.*,
+        t.id, t.title, t.description, t.completed, t.importance, t.urgency,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
+        t.planned_for_today, t.created_at, t.updated_at, t.deleted_at, t.user_id,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
         GROUP_CONCAT(tag.color) as tag_colors
@@ -308,8 +312,21 @@ router.patch('/:id/toggle', (req, res) => {
       WHERE id = ? AND user_id = ?
     `).run(newStatus, id, req.user.id);
 
-    // Fetch updated task
-    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+    // Fetch updated task with tags
+    const task = db.prepare(`
+      SELECT
+        t.id, t.title, t.description, t.completed, t.importance, t.urgency,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
+        t.planned_for_today, t.created_at, t.updated_at,
+        GROUP_CONCAT(tag.id) as tag_ids,
+        GROUP_CONCAT(tag.name) as tag_names,
+        GROUP_CONCAT(tag.color) as tag_colors
+      FROM tasks t
+      LEFT JOIN task_tags tt ON t.id = tt.task_id
+      LEFT JOIN tags tag ON tt.tag_id = tag.id
+      WHERE t.id = ?
+      GROUP BY t.id
+    `).get(id);
 
     if (!task) {
       return res.status(404).json({
@@ -318,9 +335,12 @@ router.patch('/:id/toggle', (req, res) => {
       });
     }
 
+    // Transform tags
+    const transformedTask = transformTaskWithTags(task);
+
     res.json({
       success: true,
-      task
+      task: transformedTask
     });
 
   } catch (error) {
@@ -359,7 +379,9 @@ router.patch('/:id/pomodoro', (req, res) => {
     // Fetch updated task with tags
     const task = db.prepare(`
       SELECT
-        t.*,
+        t.id, t.title, t.description, t.completed, t.importance, t.urgency,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
+        t.planned_for_today, t.created_at, t.updated_at,
         GROUP_CONCAT(tag.id) as tag_ids,
         GROUP_CONCAT(tag.name) as tag_names,
         GROUP_CONCAT(tag.color) as tag_colors
@@ -383,6 +405,67 @@ router.patch('/:id/pomodoro', (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update pomodoro count'
+    });
+  }
+});
+
+// Toggle plan for today
+router.patch('/:id/plan-today', (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if task exists and belongs to user
+    const existingTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL')
+      .get(id, req.user.id);
+
+    if (!existingTask) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    // Get current date in YYYY-MM-DD format
+    const today = new Date().toISOString().split('T')[0];
+
+    // Toggle: if planned_for_today is NULL, set it to today; otherwise set to NULL
+    const newValue = existingTask.planned_for_today ? null : today;
+
+    db.prepare(`
+      UPDATE tasks
+      SET planned_for_today = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).run(newValue, id, req.user.id);
+
+    // Fetch updated task with tags
+    const task = db.prepare(`
+      SELECT
+        t.id, t.title, t.description, t.completed, t.importance, t.urgency,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count,
+        t.planned_for_today, t.created_at, t.updated_at,
+        GROUP_CONCAT(tag.id) as tag_ids,
+        GROUP_CONCAT(tag.name) as tag_names,
+        GROUP_CONCAT(tag.color) as tag_colors
+      FROM tasks t
+      LEFT JOIN task_tags tt ON t.id = tt.task_id
+      LEFT JOIN tags tag ON tt.tag_id = tag.id
+      WHERE t.id = ?
+      GROUP BY t.id
+    `).get(id);
+
+    // Transform tags
+    const transformedTask = transformTaskWithTags(task);
+
+    res.json({
+      success: true,
+      task: transformedTask
+    });
+
+  } catch (error) {
+    console.error('Error toggling plan for today:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to toggle plan for today'
     });
   }
 });

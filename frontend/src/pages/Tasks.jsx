@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { tasksAPI } from '../services/api';
-import { Plus, Loader2, Trash2, Check, Circle, LayoutGrid, List, Tag, Calendar, AlertCircle, GitBranch, GripVertical, Timer } from 'lucide-react';
+import { Plus, Loader2, Trash2, Check, Circle, LayoutGrid, List, Tag, Calendar, AlertCircle, GitBranch, GripVertical, Timer, CalendarCheck, X } from 'lucide-react';
 import { useSwipeGesture } from '../hooks/useSwipeGesture';
 import PomodoroTimer from '../components/PomodoroTimer';
 
@@ -366,6 +366,15 @@ export default function Tasks() {
     }
   };
 
+  const handlePlanToday = async (id) => {
+    try {
+      await tasksAPI.planToday(id);
+      await loadTasks(); // Reload to update the UI
+    } catch (error) {
+      setError('Failed to plan task for today');
+    }
+  };
+
   const TaskCard = ({ task, showQuadrant = false, allTasks = [] }) => {
     // Find parent task if this is a subtask
     const parentTask = task.parent_task_id
@@ -374,12 +383,12 @@ export default function Tasks() {
 
     const [isDraggingCard, setIsDraggingCard] = useState(false);
 
-    // Swipe gesture: left for delete, right for timer (only for incomplete tasks)
+    // Swipe gesture: left for plan/unplan, right for timer (only for incomplete tasks)
     const { swipeX, isSwiping, isRevealed, revealedDirection, confirmAction, cancelReveal, handlers } = useSwipeGesture({
-      onSwipeLeft: () => task.completed !== 1 && handleDeleteTask(task.id),
+      onSwipeLeft: () => task.completed !== 1 && handlePlanToday(task.id),
       onSwipeRight: () => task.completed !== 1 && setPomodoroTask(task),
       threshold: 80,
-      maxSwipeLeft: 100, // Delete button width
+      maxSwipeLeft: 100, // Plan/Unplan button width
       maxSwipeRight: 100 // Timer button width
     });
 
@@ -459,7 +468,7 @@ export default function Tasks() {
             <span>Timer</span>
           </button>
 
-          {/* Delete Button - Fixed 100px width on right */}
+          {/* Plan/Unplan Button - Fixed 100px width on right */}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -476,7 +485,7 @@ export default function Tasks() {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '4px',
-              background: '#ff3b30',
+              background: task.planned_for_today ? '#ff3b30' : '#34c759',
               border: 'none',
               cursor: 'pointer',
               color: 'white',
@@ -488,8 +497,17 @@ export default function Tasks() {
               pointerEvents: (isRevealed && revealedDirection === 'left') ? 'auto' : 'none'
             }}
           >
-            <Trash2 size={22} strokeWidth={2.5} />
-            <span>Delete</span>
+            {task.planned_for_today ? (
+              <>
+                <X size={22} strokeWidth={2.5} />
+                <span>Unplan</span>
+              </>
+            ) : (
+              <>
+                <CalendarCheck size={22} strokeWidth={2.5} />
+                <span>Plan</span>
+              </>
+            )}
           </button>
         </div>
       )}
@@ -528,7 +546,7 @@ export default function Tasks() {
             ? '0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 0 0 rgba(255, 255, 255, 0.5) inset'
             : '0 4px 12px rgba(0, 0, 0, 0.06), 0 1px 0 0 rgba(255, 255, 255, 0.5) inset',
           border: '0.5px solid rgba(255, 255, 255, 0.8)',
-          opacity: isDragging ? 0.4 : (task.completed === 1 ? 0.7 : 1),
+          opacity: isDragging ? 0.4 : (task.completed === 1 ? 0.7 : (task.planned_for_today ? 0.6 : 1)),
           cursor: task.completed !== 1 ? 'grab' : 'default',
           transform: task.completed !== 1 ? `translateX(${swipeX}px)` : 'none',
           transition: (isSwiping || isDragging || isRevealed) ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -604,6 +622,24 @@ export default function Tasks() {
 
           {/* Badges Row */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+            {/* In Today Badge */}
+            {task.planned_for_today && (
+              <span style={{
+                background: 'rgba(102, 126, 234, 0.1)',
+                color: '#667eea',
+                padding: '3px 8px',
+                borderRadius: '6px',
+                fontSize: '11px',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px'
+              }}>
+                <CalendarCheck size={10} />
+                In Today
+              </span>
+            )}
+
             {/* Importance Badge */}
             {task.importance !== undefined && task.importance !== null && (
               <span style={{
@@ -780,6 +816,37 @@ export default function Tasks() {
               title="Start Pomodoro"
             >
               <Timer size={18} strokeWidth={2.5} />
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePlanToday(task.id);
+              }}
+              style={{
+                background: task.planned_for_today ? '#ff3b30' : '#34c759',
+                border: 'none',
+                borderRadius: '12px',
+                padding: '10px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                boxShadow: task.planned_for_today
+                  ? '0 2px 8px rgba(255, 59, 48, 0.3)'
+                  : '0 2px 8px rgba(52, 199, 89, 0.3)',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => e.target.style.transform = 'scale(1.05)'}
+              onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+              title={task.planned_for_today ? "Remove from Today" : "Plan for Today"}
+            >
+              {task.planned_for_today ? (
+                <X size={18} strokeWidth={2.5} />
+              ) : (
+                <CalendarCheck size={18} strokeWidth={2.5} />
+              )}
             </button>
 
             <button
