@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { tasksAPI } from '../services/api';
-import { Loader2, Check, Circle, CalendarCheck, Timer, Trash2, X, Clock, Tag, AlertCircle } from 'lucide-react';
+import { Loader2, Check, Circle, CalendarCheck, Timer, Trash2, X, Clock, Tag, AlertCircle, ListX, ArchiveX } from 'lucide-react';
 import PomodoroTimer from '../components/PomodoroTimer';
 
 export default function Today() {
@@ -87,6 +87,15 @@ export default function Today() {
     }
   };
 
+  const handleUnplan = async (id) => {
+    try {
+      await tasksAPI.unplan(id); // This will clear planned_for_today (move back to tasks)
+      await loadTodayTasks(); // Reload to update both sections
+    } catch (error) {
+      setError('Failed to move to tasks');
+    }
+  };
+
   const handleDeleteTask = async (id) => {
     try {
       await tasksAPI.delete(id);
@@ -144,14 +153,15 @@ export default function Today() {
 
     if (Math.abs(diff) > 100) {
       if (diff > 0) {
-        // Swipe right - Timer
-        setPomodoroTask(task);
+        // Swipe right - Complete task
+        handleToggleTask(task.id);
       } else {
         // Swipe left - depends on section
         if (section === 'today') {
+          // Remove from Today (back to tasks)
           handleRemoveFromToday(task.id);
         } else if (section === 'leftover') {
-          // For leftovers, swipe left moves to Today
+          // Move leftover to Today
           handleMoveToToday(task.id);
         }
       }
@@ -193,7 +203,7 @@ export default function Today() {
         {/* Swipe background indicators */}
         {isBeingSwiped && (
           <>
-            {/* Right swipe - Timer (Blue) */}
+            {/* Right swipe - Complete (Green checkmark) */}
             {currentOffset > 0 && (
               <div style={{
                 position: 'absolute',
@@ -201,13 +211,13 @@ export default function Today() {
                 top: 0,
                 bottom: 0,
                 width: `${Math.min(currentOffset, 100)}px`,
-                background: 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)',
+                background: 'linear-gradient(90deg, #34c759 0%, #5dd39e 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 paddingLeft: '16px',
                 borderRadius: '16px'
               }}>
-                <Timer size={24} color="white" />
+                <Check size={24} color="white" />
               </div>
             )}
 
@@ -221,7 +231,7 @@ export default function Today() {
                 width: `${Math.min(Math.abs(currentOffset), 100)}px`,
                 background: section === 'today'
                   ? 'linear-gradient(90deg, #ff3b30 0%, #ff6b6b 100%)'
-                  : 'linear-gradient(90deg, #34c759 0%, #5dd39e 100%)',
+                  : 'linear-gradient(90deg, #007aff 0%, #5ac8fa 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'flex-end',
@@ -398,12 +408,45 @@ export default function Today() {
               gap: '8px',
               zIndex: 10
             }}>
+              {/* Complete button (checkmark) */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleTask(task.id);
+                }}
+                title="Mark as complete"
+                style={{
+                  background: '#34c759',
+                  border: 'none',
+                  borderRadius: '12px',
+                  width: '36px',
+                  height: '36px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(52, 199, 89, 0.3)',
+                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.transform = 'scale(1.1)';
+                  e.target.style.boxShadow = '0 6px 16px rgba(52, 199, 89, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.transform = 'scale(1)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(52, 199, 89, 0.3)';
+                }}
+              >
+                <Check size={18} color="white" strokeWidth={2.5} />
+              </button>
+
               {/* Timer button */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   setPomodoroTask(task);
                 }}
+                title="Start Pomodoro timer"
                 style={{
                   background: '#667eea',
                   border: 'none',
@@ -429,7 +472,7 @@ export default function Today() {
                 <Timer size={18} color="white" strokeWidth={2.5} />
               </button>
 
-              {/* Section-specific action button */}
+              {/* Section-specific action buttons */}
               {section === 'today' ? (
                 // Remove from Today button (Red X)
                 <button
@@ -437,6 +480,7 @@ export default function Today() {
                     e.stopPropagation();
                     handleRemoveFromToday(task.id);
                   }}
+                  title="Remove from Today"
                   style={{
                     background: '#ff3b30',
                     border: 'none',
@@ -462,36 +506,71 @@ export default function Today() {
                   <X size={18} color="white" strokeWidth={2.5} />
                 </button>
               ) : (
-                // Move to Today button (Green Calendar)
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleMoveToToday(task.id);
-                  }}
-                  style={{
-                    background: '#34c759',
-                    border: 'none',
-                    borderRadius: '12px',
-                    width: '36px',
-                    height: '36px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(52, 199, 89, 0.3)',
-                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.transform = 'scale(1.1)';
-                    e.target.style.boxShadow = '0 6px 16px rgba(52, 199, 89, 0.4)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.transform = 'scale(1)';
-                    e.target.style.boxShadow = '0 4px 12px rgba(52, 199, 89, 0.3)';
-                  }}
-                >
-                  <CalendarCheck size={18} color="white" strokeWidth={2.5} />
-                </button>
+                <>
+                  {/* Move to Today button (Calendar) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleMoveToToday(task.id);
+                    }}
+                    title="Move to Today"
+                    style={{
+                      background: '#007aff',
+                      border: 'none',
+                      borderRadius: '12px',
+                      width: '36px',
+                      height: '36px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(0, 122, 255, 0.3)',
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.transform = 'scale(1.1)';
+                      e.target.style.boxShadow = '0 6px 16px rgba(0, 122, 255, 0.4)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.transform = 'scale(1)';
+                      e.target.style.boxShadow = '0 4px 12px rgba(0, 122, 255, 0.3)';
+                    }}
+                  >
+                    <CalendarCheck size={18} color="white" strokeWidth={2.5} />
+                  </button>
+
+                  {/* Back to Tasks button (Archive) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUnplan(task.id);
+                    }}
+                    title="Back to Tasks"
+                    style={{
+                      background: '#ff9500',
+                      border: 'none',
+                      borderRadius: '12px',
+                      width: '36px',
+                      height: '36px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(255, 149, 0, 0.3)',
+                      transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.transform = 'scale(1.1)';
+                      e.target.style.boxShadow = '0 6px 16px rgba(255, 149, 0, 0.4)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.transform = 'scale(1)';
+                      e.target.style.boxShadow = '0 4px 12px rgba(255, 149, 0, 0.3)';
+                    }}
+                  >
+                    <ArchiveX size={18} color="white" strokeWidth={2.5} />
+                  </button>
+                </>
               )}
 
               {/* Delete button */}
@@ -500,8 +579,9 @@ export default function Today() {
                   e.stopPropagation();
                   handleDeleteTask(task.id);
                 }}
+                title="Delete task"
                 style={{
-                  background: '#8e8e93',
+                  background: '#ff3b30',
                   border: 'none',
                   borderRadius: '12px',
                   width: '36px',
@@ -510,16 +590,16 @@ export default function Today() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(142, 142, 147, 0.3)',
+                  boxShadow: '0 4px 12px rgba(255, 59, 48, 0.3)',
                   transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
                 }}
                 onMouseEnter={(e) => {
                   e.target.style.transform = 'scale(1.1)';
-                  e.target.style.boxShadow = '0 6px 16px rgba(142, 142, 147, 0.4)';
+                  e.target.style.boxShadow = '0 6px 16px rgba(255, 59, 48, 0.4)';
                 }}
                 onMouseLeave={(e) => {
                   e.target.style.transform = 'scale(1)';
-                  e.target.style.boxShadow = '0 4px 12px rgba(142, 142, 147, 0.3)';
+                  e.target.style.boxShadow = '0 4px 12px rgba(255, 59, 48, 0.3)';
                 }}
               >
                 <Trash2 size={18} color="white" strokeWidth={2.5} />

@@ -535,6 +535,62 @@ router.patch('/:id/plan-today', (req, res) => {
   }
 });
 
+// Unplan task (clear planned_for_today - move back to tasks)
+router.patch('/:id/unplan', (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if task exists and belongs to user
+    const existingTask = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL')
+      .get(id, req.user.id);
+
+    if (!existingTask) {
+      return res.status(404).json({
+        success: false,
+        message: 'Task not found'
+      });
+    }
+
+    // Clear planned_for_today to move task back to tasks list
+    db.prepare(`
+      UPDATE tasks
+      SET planned_for_today = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).run(id, req.user.id);
+
+    // Fetch updated task with tags
+    const task = db.prepare(`
+      SELECT
+        t.id, t.title, t.description, t.completed, t.importance, t.urgency,
+        t.why, t.deadline, t.parent_task_id, t.source_inbox_id, t.pomodoro_count, t.time_spent_minutes,
+        t.planned_for_today, t.created_at, t.updated_at,
+        GROUP_CONCAT(tag.id) as tag_ids,
+        GROUP_CONCAT(tag.name) as tag_names,
+        GROUP_CONCAT(tag.color) as tag_colors
+      FROM tasks t
+      LEFT JOIN task_tags tt ON t.id = tt.task_id
+      LEFT JOIN tags tag ON tt.tag_id = tag.id
+      WHERE t.id = ?
+      GROUP BY t.id
+    `).get(id);
+
+    // Transform tags
+    const transformedTask = transformTaskWithTags(task);
+
+    res.json({
+      success: true,
+      task: transformedTask
+    });
+
+  } catch (error) {
+    console.error('Error unplanning task:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to unplan task'
+    });
+  }
+});
+
 // Delete task (soft delete)
 router.delete('/:id', (req, res) => {
   try {
